@@ -1,1 +1,6 @@
 *~
+
+simulation/*.mti
+simulation/*.wlf
+simulation/transcript
+simulation/libraries

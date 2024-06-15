@@ -1,0 +1,12 @@
+[submodule "boards/b68k-cpu"]
+	path = boards/b68k-cpu
+	url = https://github.com/Lougous/b68k-cpu.git
+
+[submodule "boards/b68k-io"]
+	path = boards/b68k-io
+	url = https://github.com/Lougous/b68k-io.git
+
+[submodule "boards/b68k-av"]
+	path = boards/b68k-av
+	url = https://github.com/Lougous/b68k-av.git
+

@@ -52,6 +52,16 @@ begin  -- architecture rtl
   RSTn <= '0', 'Z' after 1 us;
 
   B_D <= data_out when data_oe = '1' else (others => 'Z');
+
+  -- stub unused interfaces
+  MS_CLK <= 'Z';
+  MS_DAT <= 'Z';
+
+  KB_CLK <= 'Z';
+  KB_DAT <= 'Z';
+
+  P_TX <= '1';
+
   
   process is
 

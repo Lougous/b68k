@@ -251,7 +251,7 @@ begin  -- architecture rtl
         else
           wait for tC;
           address := B_D;
-          report "MFP: address set to " & integer'image(to_integer(unsigned(address))) severity note;
+          --report "MFP: address set to " & integer'image(to_integer(unsigned(address))) severity note;
           WRITE_ACCESS;
         end if;
       end if;

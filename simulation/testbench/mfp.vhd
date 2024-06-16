@@ -10,6 +10,9 @@ use IEEE.numeric_std.all;
 
 entity mfp is
 
+  generic (
+    FAST_START : boolean := false
+    );
   port (
 
     RSTn : inout std_logic;
@@ -57,6 +60,8 @@ begin  -- architecture rtl
     variable address : std_logic_vector(7 downto 0) := (others => '0');
 
     variable POST : std_logic_vector(7 downto 0) := (others => '0');
+
+    variable bootstrap_size : integer := 512;
 
     procedure READ_ACCESS (
       rdata : in std_logic_vector(7 downto 0);
@@ -127,9 +132,13 @@ begin  -- architecture rtl
     wait for 1 us;  -- actual time 200 ms
 
     -- bootstrap
+    if FAST_START then
+      bootstrap_size := 16;
+    end if;
+
     if true then
 --    for byte in 0 to 1023 loop
-      for byte in 0 to 511 loop
+      for byte in 0 to bootstrap_size-1 loop
         wait for tC;
         if B_CEn = '0' then
           READ_ACCESS(std_logic_vector(to_unsigned(byte mod 256, 8)), true);
@@ -140,7 +149,7 @@ begin  -- architecture rtl
       end loop;
 
 --    report "1kiB boot sector loaded" severity note;
-      report "512B boot sector loaded" severity note;
+      report integer'image(bootstrap_size) & "B boot sector loaded" severity note;
     end if;
     
     while true loop

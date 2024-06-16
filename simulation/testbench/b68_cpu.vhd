@@ -10,6 +10,9 @@ use IEEE.numeric_std.all;
 entity b68_cpu is
 
   generic (
+    -- reduce bootstrap size 
+    FAST_START : boolean := false;
+    
 --    tGCLK_ps : integer := 125000    -- 8 MHz
     tGCLK_ps : integer := 50000    -- 20 MHz
 --    tGCLK_ps : integer := 62500    -- 16 MHz
@@ -69,8 +72,10 @@ architecture rtl of b68_cpu is
 
 begin
 
+  -- free running clock
   GCLK <= not GCLK after 1 ps * (tGCLK_ps / 2);
 
+  -- use 24 bits address (A0 is not exposed by the 68k) to help readability
   CPU_A(0) <= '0';
   
   U4_glue : entity work.glue
@@ -150,6 +155,9 @@ begin
       );
 
   U5_mfp : entity work.mfp
+    generic map (
+      FAST_START => FAST_START
+      )
     port map (
       RSTn => RSTn,
       IRQn => IRQn,

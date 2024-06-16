@@ -243,7 +243,7 @@ begin
 
   J3_DRAM_lo : entity work.fpdram
     generic map (
-      ROOT_NAME => "./fpdram_mif_lo_",
+      ROOT_NAME => "./output/fpdram/mif_lo_",
       VERBOSE   => false,  --true,
       VERBOSE2  => false,
 
@@ -259,7 +259,7 @@ begin
   
   J2_DRAM_hi : entity work.fpdram
     generic map (
-      ROOT_NAME => "./fpdram_mif_hi_",
+      ROOT_NAME => "./output/fpdram/mif_hi_",
       VERBOSE   => false,  --true,
       VERBOSE2  => false,
 

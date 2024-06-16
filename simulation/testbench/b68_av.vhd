@@ -248,8 +248,9 @@ begin
     
     vga_recorder_i : entity work.vga_recorder
       generic map (
-        WIDTH  => 800-96,
-        HEIGHT => 525-2,
+        ROOT_NAME   => "./output/vga/frame",
+        WIDTH       => 800-96,
+        HEIGHT      => 525-2,
         AUTO_ENABLE => true
         )
       port map (

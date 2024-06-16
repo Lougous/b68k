@@ -14,8 +14,9 @@ use std.textio.all;
 
 entity vga_recorder is
   generic (
-    WIDTH  : integer;
-    HEIGHT : integer;
+    ROOT_NAME   : string := "./vga";
+    WIDTH       : integer;
+    HEIGHT      : integer;
     AUTO_ENABLE : boolean
     );
   port (
@@ -50,7 +51,7 @@ begin  -- simu
     wait until rising_edge(VSn);
 
     file_open(fstatus, vga_file,
-              "vga" & integer'image(fnum) & ".ppm", write_mode);
+              ROOT_NAME & integer'image(fnum) & ".ppm", write_mode);
 
     -- ppm file header
     WRITE(fbuf, "P" & integer'image(3));

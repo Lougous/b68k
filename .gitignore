@@ -2,5 +2,7 @@
 
 simulation/*.mti
 simulation/*.wlf
+simulation/*.vstf
 simulation/transcript
 simulation/libraries
+simulation/output

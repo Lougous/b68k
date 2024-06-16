@@ -1,4 +1,7 @@
 mkdir -p libraries
+mkdir -p output
+mkdir -p output/vga
+mkdir -p output/fpdram
 
 vlib libraries/work
 vmap work libraries/work

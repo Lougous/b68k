@@ -64,75 +64,82 @@ begin
     variable rs_latch : std_logic_vector(1 downto 0);
     
   begin
-    wait until WRn'event or RDn'event;
 
-    if falling_edge(WRn) then
-      assert (now - t_rise_wrn) >= tWP_hi report "RAMDAC: tWP_hi violation" severity error;
-      assert RS'stable(tAS) report "RAMDAC: tAS violation" severity error;
-      t_fall_wrn := now;
-      rs_latch := RS;
-    end if;
-   
-    if falling_edge(RDn) then
-      assert (now - t_rise_rdn) >= tRP_hi report "RAMDAC: tWP_hi violation" severity error;
-      assert RS'stable(tAS) report "RAMDAC: tAS violation" severity error;
-      t_fall_rdn := now;
-      rs_latch := RS;
-    end if;
-   
-    if rising_edge(WRn) then
-      -- write access
-      t_rise_wrn := now;
-      assert (now - t_fall_wrn) >= tWP_lo report "RAMDAC: tWP_lo violation" severity error;
-      assert RDn = '1' and RDn'stable(tWP_lo) report "RAMDAC: read/write conflict" severity error;
-      assert D'stable(tWDS) report "RAMDAC: tWDS violation" severity error;
+    -- prevent unexpected timing violation at t=0
+    wait for 1 ns;
 
-      case rs_latch is
-        when "00" =>
-          -- Address Register (RAM Write Mode)
-          reg_ad_w    <= unsigned(D);
-          reg_ad_wsel <= 0;
-        when "11" =>
-          -- Address Register (RAM Read Mode)
-          reg_ad_r    <= unsigned(D);
-          reg_ad_rsel <= 0;
-        when "01" =>
-          -- Color Palette RAM
-          if reg_ad_wsel = 0 then
-            LUT(to_integer(reg_ad_w))(23 downto 16) <= D;
-            reg_ad_wsel <= 1;
-          elsif reg_ad_wsel = 1 then
-            LUT(to_integer(reg_ad_w))(15 downto 8) <= D;
-            reg_ad_wsel <= 2;
-          else
-            LUT(to_integer(reg_ad_w))(7 downto 0) <= D;
-            reg_ad_wsel <= 0;
-            reg_ad_w    <= reg_ad_w + 1;
-          end if;
-          
-        when others =>
-          -- "10" Pixel Read Mask Register
-          null;
-      end case;
-
-      wait for tWDH;
-      assert D'stable(tWDH+tWDS) report "RAMDAC: tWDH violation" severity error;
+    while true loop
       
-    elsif rising_edge(RDn) then
-      -- read
-      t_rise_rdn := now;
-      assert (now - t_fall_rdn) >= tRP_lo report "RAMDAC: tRP_lo violation" severity error;
+      wait until WRn'event or RDn'event;
 
-      if reg_ad_rsel = 0 then
-        reg_ad_rsel <= 1;
-      elsif reg_ad_rsel = 1 then
-        reg_ad_rsel <= 2;
-      else
-        reg_ad_rsel <= 0;
-        reg_ad_r    <= reg_ad_r + 1;
+      if falling_edge(WRn) then
+        assert (now - t_rise_wrn) >= tWP_hi report "RAMDAC: tWP_hi violation" severity error;
+        assert RS'stable(tAS) report "RAMDAC: tAS violation" severity error;
+        t_fall_wrn := now;
+        rs_latch := RS;
       end if;
       
-    end if;
+      if falling_edge(RDn) then
+        assert (now - t_rise_rdn) >= tRP_hi report "RAMDAC: tWP_hi violation" severity error;
+        assert RS'stable(tAS) report "RAMDAC: tAS violation" severity error;
+        t_fall_rdn := now;
+        rs_latch := RS;
+      end if;
+      
+      if rising_edge(WRn) then
+        -- write access
+        t_rise_wrn := now;
+        assert (now - t_fall_wrn) >= tWP_lo report "RAMDAC: tWP_lo violation" severity error;
+        assert RDn = '1' and RDn'stable(tWP_lo) report "RAMDAC: read/write conflict" severity error;
+        assert D'stable(tWDS) report "RAMDAC: tWDS violation" severity error;
+
+        case rs_latch is
+          when "00" =>
+            -- Address Register (RAM Write Mode)
+            reg_ad_w    <= unsigned(D);
+            reg_ad_wsel <= 0;
+          when "11" =>
+            -- Address Register (RAM Read Mode)
+            reg_ad_r    <= unsigned(D);
+            reg_ad_rsel <= 0;
+          when "01" =>
+            -- Color Palette RAM
+            if reg_ad_wsel = 0 then
+              LUT(to_integer(reg_ad_w))(23 downto 16) <= D;
+              reg_ad_wsel <= 1;
+            elsif reg_ad_wsel = 1 then
+              LUT(to_integer(reg_ad_w))(15 downto 8) <= D;
+              reg_ad_wsel <= 2;
+            else
+              LUT(to_integer(reg_ad_w))(7 downto 0) <= D;
+              reg_ad_wsel <= 0;
+              reg_ad_w    <= reg_ad_w + 1;
+            end if;
+            
+          when others =>
+            -- "10" Pixel Read Mask Register
+            null;
+        end case;
+
+        wait for tWDH;
+        assert D'stable(tWDH+tWDS) report "RAMDAC: tWDH violation" severity error;
+        
+      elsif rising_edge(RDn) then
+        -- read
+        t_rise_rdn := now;
+        assert (now - t_fall_rdn) >= tRP_lo report "RAMDAC: tRP_lo violation" severity error;
+
+        if reg_ad_rsel = 0 then
+          reg_ad_rsel <= 1;
+        elsif reg_ad_rsel = 1 then
+          reg_ad_rsel <= 2;
+        else
+          reg_ad_rsel <= 0;
+          reg_ad_r    <= reg_ad_r + 1;
+        end if;
+        
+      end if;
+    end loop;
     
   end process timing_check;
   

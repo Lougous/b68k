@@ -52,54 +52,72 @@ begin
     variable t_fall_rdn : time;
     
   begin
-    wait until CSn'event or WRn'event or RDn'event;
+    -- prevent unexpected timing violation at t=0
+    wait for 1 ns;
 
-    if falling_edge(CSn) then
-      assert A0'stable(tAS) report "OPL2: tAS violation" severity error;
-      t_fall_csn := now;
-    end if;
+    while true loop
+      
+      wait until CSn'event or WRn'event or RDn'event or ICn'event;
 
-    if falling_edge(WRn) then
-      t_fall_wrn := now;
-    end if;
-   
-    if falling_edge(RDn) then
-      t_fall_rdn := now;
-    end if;
-   
-    if
-      (rising_edge(CSn) and rising_edge(WRn)) or
-      (rising_edge(CSn) and WRn = '0') or
-      (rising_edge(WRn) and CSn = '0')
-    then
-      -- write access
-      assert (now - t_fall_csn) >= tCSW report "OPL2: tCSW violation" severity error;
-      assert RDn = '1' and RDn'stable(tCSW) report "OPL2: read/write conflict" severity error;
-      assert (now - t_fall_wrn) >= tWW report "OPL2: tWW violation" severity error;
-      assert D'stable(tWDS) report "OPL2: tWDS violation" severity error;
-      assert A0'stable(tCSW + tAS) report "OPL2: A0 changes during access" severity error;
+      if ICn /= '0' then
+        
+        if rising_edge(ICn) then
+          report "OPL2: reset deasserted" severity note;
+        end if;
+        
+        if falling_edge(ICn) then
+          report "OPL2: reset asserted" severity note;
+        end if;
+        
+        if falling_edge(CSn) then
+          assert A0'stable(tAS) report "OPL2: tAS violation" severity error;
+          t_fall_csn := now;
+        end if;
 
-      -- assume tWDH > TAH
-      wait for tAH;
-      assert A0'stable(tAH + tCSW) report "OPL2: tAH violation" severity error;
-      wait for tWDH - tAH;
-      assert D'stable(tWDH) report "OPL2: tWDH violation" severity error;
-      
-    elsif
-      (rising_edge(CSn) and rising_edge(RDn)) or
-      (rising_edge(CSn) and RDn = '0') or
-      (rising_edge(RDn) and CSn = '0')
-    then
-      -- read
-      assert (now - t_fall_csn) >= tCSR report "OPL2: tCSR violation" severity error;
-      assert (now - t_fall_rdn) >= tRW report "OPL2: tRW violation" severity error;
-      assert A0'stable(tCSR + tAS) report "OPL2: A0 changes during access" severity error;
-      
-      wait for tAH;
-      assert A0'stable(tAH + tCSR) report "OPL2: tAH violation" severity error;
-      
-    end if;
-    
+        if falling_edge(WRn) then
+          t_fall_wrn := now;
+        end if;
+        
+        if falling_edge(RDn) then
+          t_fall_rdn := now;
+        end if;
+        
+        if
+          (rising_edge(CSn) and rising_edge(WRn)) or
+          (rising_edge(CSn) and WRn = '0') or
+          (rising_edge(WRn) and CSn = '0')
+        then
+          -- write access
+          assert (now - t_fall_csn) >= tCSW report "OPL2: tCSW violation" severity error;
+          assert RDn = '1' and RDn'stable(tCSW) report "OPL2: read/write conflict" severity error;
+          assert (now - t_fall_wrn) >= tWW report "OPL2: tWW violation" severity error;
+          assert D'stable(tWDS) report "OPL2: tWDS violation" severity error;
+          assert A0'stable(tCSW + tAS) report "OPL2: A0 changes during access" severity error;
+
+          -- assume tWDH > TAH
+          wait for tAH;
+          assert A0'stable(tAH + tCSW) report "OPL2: tAH violation" severity error;
+          wait for tWDH - tAH;
+          assert D'stable(tWDH) report "OPL2: tWDH violation" severity error;
+          
+        elsif
+          (rising_edge(CSn) and rising_edge(RDn)) or
+          (rising_edge(CSn) and RDn = '0') or
+          (rising_edge(RDn) and CSn = '0')
+        then
+          -- read
+          assert (now - t_fall_csn) >= tCSR report "OPL2: tCSR violation" severity error;
+          assert (now - t_fall_rdn) >= tRW report "OPL2: tRW violation" severity error;
+          assert A0'stable(tCSR + tAS) report "OPL2: A0 changes during access" severity error;
+          
+          wait for tAH;
+          assert A0'stable(tAH + tCSR) report "OPL2: tAH violation" severity error;
+          
+        end if;
+        
+      end if;
+    end loop;
+
   end process timing_check;
   
   data_read: process is

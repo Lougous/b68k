@@ -1,3 +1,4 @@
+quit -sim
 transcript quietly
 
 # global options
@@ -32,7 +33,7 @@ if { $opt_fast_start == 1 } {
     set g_fast_start "-gFAST_START=false"
 }
 
-vsim -sdftyp /b68_cpu/U4_glue=../boards/b68k-cpu/glue/simulation/modelsim/glue_vhd.sdo -sdftyp /b68_cpu/av_board_gen/av_board/U6_flex=../boards/b68k-av/flex/simulation/modelsim/flex_vhd.sdo -sdftyp /b68_cpu/av_board_gen/av_board/U2_avmgr=../boards/b68k-av/avmgr/simulation/modelsim/avmgr_vhd.sdo $g_fast_start work.b68_cpu
+vsim -sdftyp /b68_cpu/U4_glue=../boards/b68k-cpu/glue/simulation/modelsim/glue_vhd.sdo -sdftyp /b68_cpu/av_board_gen/av_board/U6_flex=../boards/b68k-av/flex/simulation/modelsim/flex_vhd.sdo -sdftyp /b68_cpu/av_board_gen/av_board/U2_avmgr=../boards/b68k-av/avmgr/simulation/modelsim/avmgr_vhd.sdo $g_fast_start -t ps work.b68_cpu
 
 # waveform
 do wave.do

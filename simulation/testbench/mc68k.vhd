@@ -308,55 +308,56 @@ begin
 --    CREAD(x"000000", "101", C_WORD, read_data);
 --    CREAD(x"000002", "101", C_WORD, read_data);
 
-    CREAD(x"000100", "101", C_WORD, read_data);
-    CREAD(x"000102", "101", C_WORD, read_data);
-    CREAD(x"000104", "101", C_WORD, read_data);
-    CREAD(x"000106", "101", C_WORD, read_data);
-    CREAD(x"000108", "101", C_WORD, read_data);
-    CREAD(x"00010A", "101", C_WORD, read_data);
-    CREAD(x"00010C", "101", C_WORD, read_data);
-    CREAD(x"00010E", "101", C_WORD, read_data);
-    for i in 0 to 9 loop
-    CREAD(x"000110", "101", C_WORD, read_data);
-    CREAD(x"000112", "101", C_WORD, read_data);
-    CREAD(x"000114", "101", C_WORD, read_data);
-    CWRITE(std_logic_vector(to_unsigned(65536+i, 24)), "101", C_BYTE, x"0000");  -- clrb
-    CREAD(x"000116", "101", C_WORD, read_data);
-    end loop;  -- i
-    CREAD(x"000110", "101", C_WORD, read_data);
-    CREAD(x"000112", "101", C_WORD, read_data);
-    CREAD(x"000118", "101", C_WORD, read_data);
-    CREAD(x"00011A", "101", C_WORD, read_data);
-    CREAD(x"00011C", "101", C_WORD, read_data);
-    CREAD(x"00011e", "101", C_WORD, read_data);
-    CREAD(x"000120", "101", C_WORD, read_data);
-    CWRITE(x"010FFC", "101", C_WORD, x"0000");  -- jsr
-    CWRITE(x"010FFE", "101", C_WORD, x"0122");  -- jsr
+    -- CREAD(x"000100", "101", C_WORD, read_data);
+    -- CREAD(x"000102", "101", C_WORD, read_data);
+    -- CREAD(x"000104", "101", C_WORD, read_data);
+    -- CREAD(x"000106", "101", C_WORD, read_data);
+    -- CREAD(x"000108", "101", C_WORD, read_data);
+    -- CREAD(x"00010A", "101", C_WORD, read_data);
+    -- CREAD(x"00010C", "101", C_WORD, read_data);
+    -- CREAD(x"00010E", "101", C_WORD, read_data);
+    -- for i in 0 to 9 loop
+    -- CREAD(x"000110", "101", C_WORD, read_data);
+    -- CREAD(x"000112", "101", C_WORD, read_data);
+    -- CREAD(x"000114", "101", C_WORD, read_data);
+    -- CWRITE(std_logic_vector(to_unsigned(65536+i, 24)), "101", C_BYTE, x"0000");  -- clrb
+    -- CREAD(x"000116", "101", C_WORD, read_data);
+    -- end loop;  -- i
+    -- CREAD(x"000110", "101", C_WORD, read_data);
+    -- CREAD(x"000112", "101", C_WORD, read_data);
+    -- CREAD(x"000118", "101", C_WORD, read_data);
+    -- CREAD(x"00011A", "101", C_WORD, read_data);
+    -- CREAD(x"00011C", "101", C_WORD, read_data);
+    -- CREAD(x"00011e", "101", C_WORD, read_data);
+    -- CREAD(x"000120", "101", C_WORD, read_data);
+    -- CWRITE(x"010FFC", "101", C_WORD, x"0000");  -- jsr
+    -- CWRITE(x"010FFE", "101", C_WORD, x"0122");  -- jsr
  
-    CREAD(x"00012C", "101", C_WORD, read_data);
-    CREAD(x"00012E", "101", C_WORD, read_data);
-    CREAD(x"000130", "101", C_WORD, read_data);
-    CREAD(x"000132", "101", C_WORD, read_data);
-    CWRITE(x"F00001", "101", C_BYTE, x"0707");  -- move.b #7,0xfff00001
-    CREAD(x"000134", "101", C_WORD, read_data);
-    CREAD(x"000136", "101", C_WORD, read_data);
-    CREAD(x"000138", "101", C_WORD, read_data);
-    CREAD(x"00013A", "101", C_WORD, read_data);
-    CWRITE(x"F00000", "101", C_BYTE, x"0101");  -- move.b #1,0xfff00000
+    -- CREAD(x"00012C", "101", C_WORD, read_data);
+    -- CREAD(x"00012E", "101", C_WORD, read_data);
+    -- CREAD(x"000130", "101", C_WORD, read_data);
+    -- CREAD(x"000132", "101", C_WORD, read_data);
+    -- CWRITE(x"F00001", "101", C_BYTE, x"0707");  -- move.b #7,0xfff00001
+    -- CREAD(x"000134", "101", C_WORD, read_data);
+    -- CREAD(x"000136", "101", C_WORD, read_data);
+    -- CREAD(x"000138", "101", C_WORD, read_data);
+    -- CREAD(x"00013A", "101", C_WORD, read_data);
+    -- CWRITE(x"F00000", "101", C_BYTE, x"0101");  -- move.b #1,0xfff00000
 
-    CREAD(x"000138", "101", C_WORD, read_data);
-    CREAD(x"00013A", "101", C_WORD, read_data);
-    CWRITE(x"F00001", "101", C_BYTE, x"0000");  -- move.b #0,0xfff00001
-    for i in 512 to 600 loop
-      CREAD(x"000138", "101", C_WORD, read_data);
-      CREAD(x"00013A", "101", C_WORD, read_data);
-      CREAD(x"F00000", "101", C_BYTE, read_data);  -- move.b 0xfff00000,
-      CREAD(x"000138", "101", C_WORD, read_data);
-      CREAD(x"00013A", "101", C_WORD, read_data);
-      CWRITE(std_logic_vector(to_unsigned(i, 24)), "101", C_BYTE, x"cdcd");
-      CREAD(x"000138", "101", C_WORD, read_data);
-      CREAD(x"00013A", "101", C_WORD, read_data);
-    end loop;  -- i
+    -- CREAD(x"000138", "101", C_WORD, read_data);
+    -- CREAD(x"00013A", "101", C_WORD, read_data);
+    -- CWRITE(x"F00001", "101", C_BYTE, x"0000");  -- move.b #0,0xfff00001
+    -- -- for i in 512 to 600 loop
+    -- --   CREAD(x"000138", "101", C_WORD, read_data);
+    -- --   CREAD(x"00013A", "101", C_WORD, read_data);
+    -- --   CREAD(x"F00000", "101", C_BYTE, read_data);  -- move.b 0xfff00000,
+    -- --   CREAD(x"000138", "101", C_WORD, read_data);
+    -- --   CREAD(x"00013A", "101", C_WORD, read_data);
+    -- --   CWRITE(std_logic_vector(to_unsigned(i, 24)), "101", C_BYTE, x"cdcd");
+    -- --   CREAD(x"000138", "101", C_WORD, read_data);
+    -- --   CREAD(x"00013A", "101", C_WORD, read_data);
+    -- -- end loop;  -- i
+    
     -- IO board
 --    report "68K: IO board" severity note;
 --    CREAD(x"00013C", "101", C_WORD, read_data);
@@ -423,86 +424,11 @@ begin
     CREAD(x"100000", "101", C_WORD, read_data, x"0F0F");
 
     ----------------------------------------------------------------------------
-    if false then
-    report "68K: AV RAM issue" severity note;
     CWRITE(x"FE0000", "101", C_WORD, x"3000");
     CWRITE(x"FE0002", "101", C_WORD, x"0000");
     CWRITE(x"FE0004", "101", C_WORD, x"0100");
     CWRITE(x"FE0006", "101", C_WORD, x"0000");
 
-    for i in 1 to 100 loop
-
-      -- <gpu_draw_8>:
-    CREAD(x"0001A2", "001", C_WORD, read_data);
-    CWRITE(x"001000", "001", C_WORD, x"1234");
-    CWRITE(x"001002", "001", C_WORD, x"5678");
-    CREAD(x"0001A4", "001", C_WORD, read_data);
-    CREAD(x"0001A6", "001", C_WORD, read_data);
-    CWRITE(x"001004", "001", C_WORD, x"1234");
-    CWRITE(x"001006", "001", C_WORD, x"5678");
-    CREAD(x"0001A8", "001", C_WORD, read_data);
-    CREAD(x"0001AA", "001", C_WORD, read_data);
-    CWRITE(x"001008", "001", C_WORD, x"1234");
-    CWRITE(x"00100A", "001", C_WORD, x"5678");
-    CREAD(x"0001ac", "001", C_WORD, read_data);
-    CREAD(x"0001ae", "001", C_WORD, read_data);
-    CREAD(x"0001b0", "001", C_WORD, read_data);
-    CREAD(x"0001b2", "001", C_WORD, read_data);
-    CREAD(x"0001b4", "001", C_WORD, read_data);
-    CREAD(x"0001b6", "001", C_WORD, read_data);
-    CREAD(x"0001b8", "001", C_WORD, read_data);
-    CWRITE(x"f9a100", "001", C_BYTE, x"5678");
-    CREAD(x"0001ba", "001", C_WORD, read_data);
-    CREAD(x"0001bc", "001", C_WORD, read_data);
-    CREAD(x"0001be", "001", C_WORD, read_data);
-    CWRITE(x"f9a101", "001", C_BYTE, x"5678");
-    -- interrupt
-    CREAD(x"000170", "101", C_WORD, read_data);
-    CREAD(x"000172", "101", C_WORD, read_data);
-    -- /interrupt
-    CREAD(x"0001c0", "001", C_WORD, read_data);
-    CREAD(x"0001c2", "001", C_WORD, read_data);
-    CREAD(x"0001c4", "001", C_WORD, read_data);
-    CREAD(x"0001c6", "001", C_WORD, read_data);
-    CWRITE(x"f9a102", "001", C_BYTE, x"8080");
-    CREAD(x"0001c8", "001", C_WORD, read_data);
-    CREAD(x"0001ca", "001", C_WORD, read_data);
-    CREAD(x"0001cc", "001", C_WORD, read_data);
-    CREAD(x"0001ce", "001", C_WORD, read_data);
-    CWRITE(x"f9a103", "001", C_BYTE, x"7373");
-    CREAD(x"0001d0", "001", C_WORD, read_data);
-    CREAD(x"0001d2", "001", C_WORD, read_data);
-    CREAD(x"0001d4", "001", C_WORD, read_data);
-    CREAD(x"0001d6", "001", C_WORD, read_data);
-    CREAD(x"0001d8", "001", C_WORD, read_data);
-    CREAD(x"0001da", "001", C_WORD, read_data);
-    CREAD(x"0001dc", "001", C_WORD, read_data);
-    CREAD(x"0001de", "001", C_WORD, read_data);
-    CREAD(x"0001e0", "001", C_WORD, read_data);
-    CWRITE(x"f9a104", "001", C_BYTE, x"8181");
-    CREAD(x"0001e2", "001", C_WORD, read_data);
-    CREAD(x"0001e4", "001", C_WORD, read_data);
-    CREAD(x"0001e6", "001", C_WORD, read_data);
-    CREAD(x"0001e8", "001", C_WORD, read_data);
-    CREAD(x"0001ea", "001", C_WORD, read_data);
-    CWRITE(x"f9a105", "001", C_BYTE, x"8181");
-    CREAD(x"0001ec", "001", C_WORD, read_data);
-    CREAD(x"0001ee", "001", C_WORD, read_data);
-    CREAD(x"0001f0", "001", C_WORD, read_data);
-    CREAD(x"0001f2", "001", C_WORD, read_data);
-    CWRITE(x"f9a106", "001", C_BYTE, x"8181");
-    CREAD(x"0001f4", "001", C_WORD, read_data);
-    CREAD(x"0001f6", "001", C_WORD, read_data);
-    CREAD(x"0001f8", "001", C_WORD, read_data);
-    CWRITE(x"f9a107", "001", C_BYTE, x"0000");
-    CREAD(x"0001fa", "001", C_WORD, read_data);
-    CWRITE(x"001000", "001", C_WORD, x"0000");
-    CWRITE(x"001002", "001", C_WORD, x"4321");
-    CREAD(x"0001fc", "001", C_WORD, read_data);
-   
-    end loop;
-    end if;
-      
     ----------------------------------------------------------------------------
     -- IO bus access
     report "68K: access to MFP" severity note;
@@ -594,10 +520,12 @@ begin
     -- GPU
     -------------------
     report "68K: GPU test" severity note;
+    report "68K:    register config" severity note;
     -- conf: hi res mode, LUT #0, frame buffer @ 20000h, VRAM bank #0 (00000h-0FFFFh)
     CWRITE(x"f80080", "101", C_WORD, x"0000");
     CWRITE(x"f80082", "101", C_WORD, x"0000");
     
+    report "68K:    load graphic data" severity note;
     -- load smiley @7400 in VRAM
     -- // character 01h
     --  0x36, 0x93, 
@@ -616,6 +544,7 @@ begin
     CWRITE(x"f9740e", "101", C_WORD, x"9006");
 
     -- build DL @0x0
+    report "68K:    build DL" severity note;
     -- read smiley
     CWRITE(x"f90000", "101", C_WORD, x"7400"); -- ADDR 7400h
     CWRITE(x"f90002", "101", C_WORD, x"8031"); -- 4 lines of 2 words
@@ -629,7 +558,8 @@ begin
     CWRITE(x"f9000c", "101", C_WORD, x"8100"); -- stop
                                  
     -- start DL @0x0             
-    CWRITE(x"f80084", "101", C_WORD, x"0000");
+    report "68K:    run DL" severity note;
+     CWRITE(x"f80084", "101", C_WORD, x"0000");
 
     read_data := x"8080";
 
@@ -637,6 +567,8 @@ begin
       CREAD(x"f80081", "101", C_BYTE, read_data);
     end loop;
         
+    report "68K:    DL finished" severity note;
+    
     for y in 1 to 16 loop
       -- build DL @0x0
       -- read smiley

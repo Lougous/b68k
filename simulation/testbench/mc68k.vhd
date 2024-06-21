@@ -526,7 +526,7 @@ begin
     CWRITE(x"f80082", "101", C_WORD, x"0000");
     
     report "68K:    load graphic data" severity note;
-    -- load smiley @7400 in VRAM
+    -- load smiley @7400 in VRAM 4x4 pixels
     -- // character 01h
     --  0x36, 0x93, 
     --  0x15, 0xA2, 
@@ -537,7 +537,7 @@ begin
     CWRITE(x"f97404", "101", C_WORD, x"A7B5");
     CWRITE(x"f97406", "101", C_WORD, x"6CC9");
 
-    -- a cross
+    -- a cross 4x4 pixels
     CWRITE(x"f97408", "101", C_WORD, x"6009");
     CWRITE(x"f9740a", "101", C_WORD, x"0690");
     CWRITE(x"f9740c", "101", C_WORD, x"0690");
@@ -547,13 +547,13 @@ begin
     report "68K:    build DL" severity note;
     -- read smiley
     CWRITE(x"f90000", "101", C_WORD, x"7400"); -- ADDR 7400h
-    CWRITE(x"f90002", "101", C_WORD, x"8031"); -- 4 lines of 2 words
-    CWRITE(x"f90004", "101", C_WORD, x"8200"); -- read BK #0
+    CWRITE(x"f90002", "101", C_WORD, x"8030"); -- 4 lines
+    CWRITE(x"f90004", "101", C_WORD, x"C000"); -- read BK #0, 1 words/line
 
     -- write to VRAM
     CWRITE(x"f90006", "101", C_WORD, x"0000"); -- ADDR 20000h
-    CWRITE(x"f90008", "101", C_WORD, x"8033"); -- 4 lines of 4 words
-    CWRITE(x"f9000a", "101", C_WORD, x"9308"); -- write BK #0, LUT #8
+    CWRITE(x"f90008", "101", C_WORD, x"8030"); -- 4 lines
+    CWRITE(x"f9000a", "101", C_WORD, x"C308"); -- write BK #0, 2 words/line, LUT #8
 
     CWRITE(x"f9000c", "101", C_WORD, x"8100"); -- stop
                                  
@@ -573,21 +573,21 @@ begin
       -- build DL @0x0
       -- read smiley
       CWRITE(x"f90000", "101", C_WORD, x"7400"); -- ADDR 7400h
-      CWRITE(x"f90002", "101", C_WORD, x"8031"); -- 4 lines of 2 words
-      CWRITE(x"f90004", "101", C_WORD, x"8200"); -- read BK #0
+      CWRITE(x"f90002", "101", C_WORD, x"8030"); -- 4 lines
+      CWRITE(x"f90004", "101", C_WORD, x"C000"); -- read BK #0, 1 words/line
       
       -- read cross
       CWRITE(x"f90006", "101", C_WORD, x"7408"); -- ADDR 7408h
-      CWRITE(x"f90008", "101", C_WORD, x"8031"); -- 4 lines of 2 words
-      CWRITE(x"f9000a", "101", C_WORD, x"8210"); -- read BK #1
+      CWRITE(x"f90008", "101", C_WORD, x"8030"); -- 4 lines
+      CWRITE(x"f9000a", "101", C_WORD, x"C010"); -- read BK #1, 1 words/line
 
       -- write to VRAM
       -- ADDR 20000h + 200h * y
       CWRITE(x"f9000c", "101", C_WORD, std_logic_vector(to_unsigned(4*512*(y mod 16), 16))); 
-      CWRITE(x"f9000e", "101", C_WORD, x"8033"); -- 4 lines of 4 words
+      CWRITE(x"f9000e", "101", C_WORD, x"8030"); -- 4 lines
 
-      CWRITE(x"f90010", "101", C_WORD, x"9308"); -- write BK #0, LUT #8
-      CWRITE(x"f90012", "101", C_WORD, x"9310"); -- write BK #1, LUT #0
+      CWRITE(x"f90010", "101", C_WORD, x"C308"); -- write BK #0, 2 words/line, LUT #8
+      CWRITE(x"f90012", "101", C_WORD, x"C310"); -- write BK #1, 2 words/line, LUT #0
       CWRITE(x"f90014", "101", C_WORD, x"8100"); -- stop
         
       -- start DL @0x0000            
@@ -638,37 +638,37 @@ begin
 --    CWRITE(x"F80018", "101", "10", x"0001"); -- write
 
     -- audio
-    while true loop
+    -- while true loop
 
-      read_data := x"0040";
+    --   read_data := x"0040";
 
-      while read_data(5) = '0' loop
-        CREAD(x"F80012", "101", C_BYTE, read_data);
-      end loop;
+    --   while read_data(5) = '0' loop
+    --     CREAD(x"F80012", "101", C_BYTE, read_data);
+    --   end loop;
 
-      wait for 50 us;
+    --   wait for 50 us;
 
-      for i in 0 to 15 loop
-        CWRITE(x"F8001C", "101", C_BYTE,
-               (x"80" or std_logic_vector(to_unsigned((i*16+i)/2, 8))) &
-               (x"80" or std_logic_vector(to_unsigned((i*16+i)/2, 8)))
-               );
-        CWRITE(x"F8001E", "101", C_BYTE,
-               std_logic_vector(to_unsigned((i*16+i)/2, 8)) &
-               std_logic_vector(to_unsigned((i*16+i)/2, 8))
-               );
-      end loop;  -- i
+    --   for i in 0 to 15 loop
+    --     CWRITE(x"F8001C", "101", C_BYTE,
+    --            (x"80" or std_logic_vector(to_unsigned((i*16+i)/2, 8))) &
+    --            (x"80" or std_logic_vector(to_unsigned((i*16+i)/2, 8)))
+    --            );
+    --     CWRITE(x"F8001E", "101", C_BYTE,
+    --            std_logic_vector(to_unsigned((i*16+i)/2, 8)) &
+    --            std_logic_vector(to_unsigned((i*16+i)/2, 8))
+    --            );
+    --   end loop;  -- i
 
-      for i in 15 downto 0 loop
-        CWRITE(x"F8001C", "101", C_BYTE,
-               (x"80" or std_logic_vector(to_unsigned((i*16+i)/2, 8))) &
-               (x"80" or std_logic_vector(to_unsigned((i*16+i)/2, 8)))
-               );
-        CWRITE(x"F8001E", "101", C_BYTE,
-               std_logic_vector(to_unsigned((i*16+i)/2, 8)) &
-               std_logic_vector(to_unsigned((i*16+i)/2, 8))
-               );
-      end loop;  -- i
+    --   for i in 15 downto 0 loop
+    --     CWRITE(x"F8001C", "101", C_BYTE,
+    --            (x"80" or std_logic_vector(to_unsigned((i*16+i)/2, 8))) &
+    --            (x"80" or std_logic_vector(to_unsigned((i*16+i)/2, 8)))
+    --            );
+    --     CWRITE(x"F8001E", "101", C_BYTE,
+    --            std_logic_vector(to_unsigned((i*16+i)/2, 8)) &
+    --            std_logic_vector(to_unsigned((i*16+i)/2, 8))
+    --            );
+    --   end loop;  -- i
 
 --      for i in 0 to 15 loop
 --        CWRITE(x"F8001C", "101", "10", std_logic_vector(to_unsigned((i*16+i)/2, 16)));
@@ -680,7 +680,7 @@ begin
 --        CWRITE(x"F8001E", "101", "10", x"0080" or std_logic_vector(to_unsigned((i*16+i)/2, 16)));
 --      end loop;  -- i
 
-    end loop;
+    --end loop;
    
     -- MMU
     CREAD(x"000004", "101", C_BYTE, read_data);

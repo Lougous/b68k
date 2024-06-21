@@ -10,6 +10,10 @@ use IEEE.numeric_std.all;
 
 entity b68_av is
 
+  generic (
+    -- gate level for AV board flex FPGA
+    FLEX_GATE  : boolean := false
+    );
   port (
     -- local bus
     B_CEn  : in    std_logic;
@@ -44,6 +48,7 @@ architecture rtl of b68_av is
   signal MSEL : std_logic_vector(2 downto 0);
   signal MWEn : std_logic;
   signal MOEn : std_logic;
+  signal MOEn_dly : std_logic;
 
   signal PDAT  : std_logic_vector(7 downto 0);
   signal PCLK  : std_logic;
@@ -133,45 +138,96 @@ begin
 
         );
 
-    U6_flex : entity work.flex
-      port map (
-        RSTn  => L_RSTn,
-        CLK25 => clk25,
+    flex_gate_arch_g: if FLEX_GATE generate
+      U6_flex : entity work.flex(structure)
+        port map (
+          RSTn  => L_RSTn,
+          CLK25 => clk25,
 
-        -- local bus
-        LWEn  => FLEX_WEn,
-        LREn  => FLEX_REn,
-        LA0   => B_A0,
-        LALEn => B_ALEn,
-        LAD   => L_AD,
-        IRQn  => IRQn,
+          -- local bus
+          LWEn  => FLEX_WEn,
+          LREn  => FLEX_REn,
+          LA0   => B_A0,
+          LALEn => B_ALEn,
+          LAD   => L_AD,
+          IRQn  => IRQn,
 
-        -- memory
-        MAD   => MAD,
-        MA0   => MA(16),
-        MALE  => MALE,
-        MSEL  => MSEL,
-        MWEn  => MWEn,
-        MOEn  => MOEn,
-    
-        -- video out
-        PDAT  => PDAT,
-        PCLK  => PCLK,
-        BLANK => PBLKn,
-        VSYNC => VSYNC,
-        HSYNC => HSYNC,
+          -- memory
+          MAD   => MAD,
+          MA0   => MA(16),
+          MALE  => MALE,
+          MSEL  => MSEL,
+          MWEn  => MWEn,
+          MOEn  => MOEn,
+          
+          -- video out
+          PDAT  => PDAT,
+          PCLK  => PCLK,
+          BLANK => PBLKn,
+          VSYNC => VSYNC,
+          HSYNC => HSYNC,
 
-        -- OPL2
-        OPL_RSTn => OPL_RSTn,
-        OPL_MO   => OPL_MO,
-        OPL_SH   => OPL_SH,
+          -- OPL2
+          OPL_RSTn => OPL_RSTn,
+          OPL_MO   => OPL_MO,
+          OPL_SH   => OPL_SH,
 
-        -- audio out
-        PWM_R_HI => open,
-        PWM_R_LO => open,
-        PWM_L_HI => open,
-        PWM_L_LO => open
-        );
+          -- audio out
+          PWM_R_HI => open,
+          PWM_R_LO => open,
+          PWM_L_HI => open,
+          PWM_L_LO => open
+          );
+
+      MOEn_dly <= MOEn;
+    end generate flex_gate_arch_g;
+
+    flex_rtl_arch_g: if not FLEX_GATE generate
+      U6_flex : entity work.flex(rtl)
+        port map (
+          RSTn  => L_RSTn,
+          CLK25 => clk25,
+
+          -- local bus
+          LWEn  => FLEX_WEn,
+          LREn  => FLEX_REn,
+          LA0   => B_A0,
+          LALEn => B_ALEn,
+          LAD   => L_AD,
+          IRQn  => IRQn,
+
+          -- memory
+          MAD   => MAD,
+          MA0   => MA(16),
+          MALE  => MALE,
+          MSEL  => MSEL,
+          MWEn  => MWEn,
+          MOEn  => MOEn,
+          
+          -- video out
+          PDAT  => PDAT,
+          PCLK  => PCLK,
+          BLANK => PBLKn,
+          VSYNC => VSYNC,
+          HSYNC => HSYNC,
+
+          -- OPL2
+          OPL_RSTn => OPL_RSTn,
+          OPL_MO   => OPL_MO,
+          OPL_SH   => OPL_SH,
+
+          -- audio out
+          PWM_R_HI => open,
+          PWM_R_LO => open,
+          PWM_L_HI => open,
+          PWM_L_LO => open
+          );
+
+      -- adjust propagation delay to make it work
+      MOEn_dly <= MOEn after 17 ns;
+      
+    end generate flex_rtl_arch_g;
+
 
     U7_74F373 : entity work.sl74373
       generic map (
@@ -207,7 +263,7 @@ begin
         A   => MA,
         D   => MAD,
         SEL => MSEL,
-        OEn => MOEn,
+        OEn => MOEn_dly,
         WEn => MWEn
         );
     
@@ -219,7 +275,7 @@ begin
         A   => MA,
         D   => MAD,
         SEL => MSEL,
-        OEn => MOEn,
+        OEn => MOEn_dly,
         WEn => MWEn
         );
     

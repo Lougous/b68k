@@ -12,6 +12,8 @@ entity b68_cpu is
   generic (
     -- reduce bootstrap size 
     FAST_START : boolean := false;
+    -- gate level for AV board flex FPGA
+    FLEX_GATE  : boolean := false;
     
 --    tGCLK_ps : integer := 125000    -- 8 MHz
     tGCLK_ps : integer := 50000    -- 20 MHz
@@ -277,6 +279,9 @@ begin
   av_board_gen: if true generate
 
     av_board : entity work.b68_av
+      generic map (
+        FLEX_GATE => FLEX_GATE
+        )
       port map (
         -- local bus
         B_CEn  => B_CEn(6),
@@ -290,5 +295,5 @@ begin
         );
 
  end generate av_board_gen;
-  
+ 
 end architecture rtl;

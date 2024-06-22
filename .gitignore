@@ -6,3 +6,9 @@ simulation/*.vstf
 simulation/transcript
 simulation/libraries
 simulation/output
+
+*.o
+*.elf
+*.bin
+*-img.*
+*.debug

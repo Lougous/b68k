@@ -11,6 +11,7 @@
 
 /* hardware configuration */
 #define K_HAS_AV_BOARD
+#define K_HAS_IO_BOARD
 
 /* kernel space stack size */
 #define K_STACK_BYTES  0x2000

@@ -156,25 +156,30 @@ void system_task (void)
   // tty uses clock services
   proc_create_task(2, "clock", clock_task, clock_stack, _CLOCK_STACK_SIZE);
 
+  proc_create_task(1, "debug", dsh, dsh_stack, sizeof(dsh_stack));
+
 #ifdef K_HAS_AV_BOARD
   _tty_pid = proc_create_task(4, "tty", tty_task, tty_stack, _TTY_STACK_SIZE);
   while (proc_get_state(_tty_pid) != PROC_STATE_BLOCKED) proc_yield();
   _tp_len = 0;
   __stdout_msg_struct.putchar = _tty_putchar;
-  
 #endif
 
   /* be careful with process IDs (no duplication) */
   /* start device drivers before services (tty, vfs, ...) */
+#ifdef K_HAS_IO_BOARD
   pid_t mio_pid = proc_create_task(5, "mio", mio_task, mio_stack, _MIO_STACK_SIZE);
-  proc_create_task(1, "debug", dsh, dsh_stack, sizeof(dsh_stack));
+#endif
+  
   pid_t vfs_pid = proc_create_task(3, "vfs", vfs_task, vfs_stack, _VFS_STACK_SIZE);
 
   proc_create_task(PROC_PID_ANY, "mouse", mouse_task, mouse_stack, sizeof(mouse_stack));
   
   /* ensure drivers are properly initialized before to go on */
   _POST_code(0xD);
+#ifdef K_HAS_IO_BOARD
   while (proc_get_state(mio_pid) != PROC_STATE_BLOCKED) proc_yield();
+#endif
 
 #ifdef K_HAS_AV_BOARD
   /* those drivers need the AV FPGA properly configured (tty driver) */

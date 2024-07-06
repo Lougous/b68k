@@ -43,7 +43,7 @@ system.elf: system.ld ${OBJ}
 	${LD} -o $@ ${LDFLAGS} -T $^ -lgcc
 	${OBJCOPY} -O binary --only-section=.text --only-section=.rodata --only-section=.sdata $@ system-img.bin
 	echo "const unsigned long system_bin[] = {\n" > system-img.c
-	cat system.bin | hexdump -v -e '1/4 "0x%x," "\n"' >> system-img.c
+	cat system-img.bin | hexdump -v -e '1/4 "0x%x," "\n"' >> system-img.c
 	echo "};\n" >> system-img.c
 	${OBJDUMP} -d $@ > system.debug
 

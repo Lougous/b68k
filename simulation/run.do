@@ -21,6 +21,9 @@ while { $n > 0 } {
 	}
 	default {
 	    echo "error: $1: bad argument"
+	    echo "options:"
+	    echo "  fast-start=0|1"
+	    echo "  flex-gate=0|1"
 	    pause
 	}
     }

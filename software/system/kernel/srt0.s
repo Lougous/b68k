@@ -80,7 +80,12 @@ start:
 	/* disable interrupts */
 	ori.w	#0x0700, %sr
 
-	/* Clear bss */	
+	/* POST(0x00)
+	/* TODO: use #define */
+	move.b #7,0xfff00001
+	move.b #0,0xfff00000
+
+	/* Clear BSS */
         lea.l   __s_bss,%a0
         move.l  #__e_bss,%d0
 1:
@@ -89,6 +94,7 @@ start:
         clr.b   (%a0)+
         bra.s   1b
 2:
+	
         /* Move data to ram */
 /*
         lea.l   __e_text,%a0
@@ -105,22 +111,13 @@ start:
 	lea.l  k_stktop,%sp
 
 	/* read B68K_MFP_REG_SYSCFG register */
+	/* TODO: use #define */
 	move.b #12,0xfff00001
 	move.b 0xfff00000,%d0
 
 	/* if bit B68K_MFP_SYS_RAM_BOOT is set, then boot is done after bootstrap load: do not copy from flash to RAM */
-	btst	#5,%d0
-	beq	boot_from_ram
-	
-	/* boot loader */
-	jsr bootloader
-boot_from_ram:
-	
-	/* system init */
-	jsr k_sys_init
-
-	/* should never return */
-	bra k_panic
+	btst	#5,%d0         /* Z set if bit #5 not set */
+	bne	boot_from_ram  /* branch if Z not set */
 	
 	/******************************************************/
 	/* bootloader : NEEDS TO BE IN FIRST 512 BYTES COPIED
@@ -145,13 +142,19 @@ bl_loop:
 	cmpi.l #65536,%d0
 	bnes bl_loop
 
+boot_from_ram:
+	
 	/* POST(0x02)
 	/* TODO: use #define */
 	move.b #7,0xfff00001
 	move.b #2,0xfff00000
 
-	rts
+	/* system init */
+	jsr k_sys_init
 
+	/* should never return */
+	bra k_panic
+	
 	/******************************************************/
 	/* default interruption entry
 	/******************************************************/

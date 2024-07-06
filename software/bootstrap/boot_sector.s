@@ -77,17 +77,6 @@ start:
 	/* disable interrupts */
 	ori.w	#0x0700, %sr
 
-	/* Clear bss */	
-/*
-        lea.l   __s_bss,%a0
-        move.l  #__e_bss,%d0
-1:
-        cmp.l   %d0,%a0
-        beq.s   2f
-        clr.b   (%a0)+
-        bra.s   1b
-2:
-*/
 	/* set stack pointer */
 	lea.l  stack,%sp
 
@@ -98,8 +87,9 @@ start:
 	jsr loader
 
 	/* should never return */
-	move.b #7,0xfff00001  /* TODO: use #define */
-	move.b #0xFE,0xfff00000  /* TODO: use #define */
+	/* TODO: use #define */
+	move.b #7,0xfff00001
+	move.b #0xFE,0xfff00000
 halt:	
 	bra halt
 	
@@ -123,7 +113,7 @@ bootloader:
 bl_loop:
 	movea.l %d0,%a0
         addq.l #1,%d0
- 	move.b 0xfff00000,%d1
+ 	move.b 0xfff00000,%d1	/* TODO: use #define */
         move.b %d1,%a0@
 	cmpi.l #0x21000,%d0  /* max 4kiB */
 	bnes bl_loop
@@ -140,13 +130,13 @@ bl_loop:
 	/******************************************************/
 default:
 	/* POST code */
-	move.b #7,0xfff00001  /* TODO: use #define */
+	move.b #7,0xfff00001     /* TODO: use #define */
 	move.b #0xFF,0xfff00000  /* TODO: use #define */
 	bra dead
 	
 irq:
 	/* POST code */
-	move.b #7,0xfff00001  /* TODO: use #define */
+	move.b #7,0xfff00001     /* TODO: use #define */
 	move.b #0xFD,0xfff00000  /* TODO: use #define */
 	bra dead
 

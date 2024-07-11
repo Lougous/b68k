@@ -8,7 +8,9 @@ simulation/libraries
 simulation/output
 
 *.o
+*.a
 *.elf
 *.bin
 *-img.*
 *.debug
+**/build/*

@@ -38,5 +38,5 @@ init:	init.o
 
 clean:
 	make -C ../lib/libc clean
-	rm -f *.o ${BIN}
+	rm -f *.o build/*
 

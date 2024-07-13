@@ -1,3 +1,9 @@
+//
+// B68K Computer - Copyright (c) 2024 Lougous
+// https://github.com/Lougous/b68k
+//
+// System/kernel - system init and system task
+//
 
 #include <stdio.h>
 #include <types.h>

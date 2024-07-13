@@ -1,3 +1,9 @@
+//
+// B68K Computer - Copyright (c) 2024 Lougous
+// https://github.com/Lougous/b68k
+//
+// System/kernel - B68K memory mapping and registers
+//
 
 #ifndef _b68k_h_
 #define _b68k_h_

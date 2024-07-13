@@ -1,3 +1,11 @@
+//
+// B68K Computer - Copyright (c) 2024 Lougous
+// https://github.com/Lougous/b68k
+//
+// System/kernel - debug shell - load command
+//
+// load data from IO board serial port to memory
+//
 
 #include <types.h>
 #include <stddef.h>

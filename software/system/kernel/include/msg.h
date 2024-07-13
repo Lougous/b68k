@@ -1,3 +1,9 @@
+//
+// B68K Computer - Copyright (c) 2024 Lougous
+// https://github.com/Lougous/b68k
+//
+// System/kernel - kernel header - messages
+//
 
 #ifndef _msg_h_
 #define _msg_h_

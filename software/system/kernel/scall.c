@@ -1,3 +1,11 @@
+//
+// B68K Computer - Copyright (c) 2024 Lougous
+// https://github.com/Lougous/b68k
+//
+// System/kernel - system call handler
+//
+// see scall in srt0.s for whole system call management sequence
+//
 
 #include <types.h>
 #include <stddef.h>

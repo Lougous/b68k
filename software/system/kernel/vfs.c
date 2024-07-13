@@ -1,3 +1,9 @@
+//
+// B68K Computer - Copyright (c) 2024 Lougous
+// https://github.com/Lougous/b68k
+//
+// System/kernel - VFS task (virtual file system)
+//
 
 #include <types.h>
 #include <stddef.h>

@@ -1,3 +1,12 @@
+//
+// B68K Computer - Copyright (c) 2024 Lougous
+// https://github.com/Lougous/b68k
+//
+// System/kernel - debug shell
+//
+// extract an hexadecimal value from a string
+//
+
 int readx(char *str, unsigned int *val) {
   unsigned int n = 0;
 

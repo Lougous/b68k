@@ -1,3 +1,9 @@
+//
+// B68K Computer - Copyright (c) 2024 Lougous
+// https://github.com/Lougous/b68k
+//
+// System/kernel - kernel header - kernel log
+//
 
 #ifndef _debug_h_
 #define _debug_h_

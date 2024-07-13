@@ -1,3 +1,9 @@
+//
+// B68K Computer - Copyright (c) 2024 Lougous
+// https://github.com/Lougous/b68k
+//
+// System/kernel - MFP peripherals IRQ handler
+//
 // This module manages one of the two interrupt source of the MFP, which
 // collects both PS/2 ports, the debug serial interface and clock timer.
 // see system.c for MFP system timer management.

@@ -1,3 +1,9 @@
+//
+// B68K Computer - Copyright (c) 2024 Lougous
+// https://github.com/Lougous/b68k
+//
+// System/kernel - PCM task for b68k-av board
+//
 
 #include <stddef.h>
 #include <types.h>
@@ -53,7 +59,7 @@ void av_pcm_task ()
       case DEV_WRITE:
 	{
 	  if ((B68K_AV_FLEX->cfgsts & B68K_AV_FLEX_CFGSTS_APU_PCM_HFULL_MASK) == 0) {
-	    /* less than half full, can store at least 128 more bytes (64 left-right samples) */
+	    // less than half full, can store at least 128 more bytes (64 left-right samples)
 	    u16_t *pc = msg.body.dev_write.src;
 	    s32_t count = msg.body.dev_write.count & ~1;
 
@@ -72,7 +78,7 @@ void av_pcm_task ()
 
 	    msg_out.body.s32 = count;
 	  } else {
-	    /* at least half full, nothing stored yet */
+	    // at least half full, nothing stored yet
 	    //K_PRINTF(2, "av_pcm: full !\n");
 	    msg_out.body.s32 = 0;
 	  }
@@ -83,7 +89,7 @@ void av_pcm_task ()
 
       case DEV_READ:
 	{
-	  /* nothing to read */
+	  // nothing to read
 	  msg_out.body.s32 = 0;
 	  send(from, &msg_out);
 	}  

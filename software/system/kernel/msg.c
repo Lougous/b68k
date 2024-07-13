@@ -1,3 +1,9 @@
+//
+// B68K Computer - Copyright (c) 2024 Lougous
+// https://github.com/Lougous/b68k
+//
+// System/kernel - macros for VFS task message passing
+//
 
 #include <stddef.h>
 #include <types.h>

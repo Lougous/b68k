@@ -1,3 +1,12 @@
+//
+// B68K Computer - Copyright (c) 2024 Lougous
+// https://github.com/Lougous/b68k
+//
+// System/kernel - debug shell - mm command
+//
+// modify memory location
+//
+
 #include <stdio.h>
 #include <string.h>
 

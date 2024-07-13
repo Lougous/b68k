@@ -1,3 +1,9 @@
+//
+// B68K Computer - Copyright (c) 2024 Lougous
+// https://github.com/Lougous/b68k
+//
+// System/kernel - clock task
+//
 
 #include <stdio.h>
 #include <stddef.h>
@@ -42,7 +48,7 @@ void clock_task ()
   {
     u16_t lbkp = k_lock();
 
-    /* enable timer interrupt */
+    // enable timer interrupt
     irq_register_interrupt(IRQ_CLOCK, _irq_timer_handler);
     irq_enable_interrupt(IRQ_CLOCK);  // timer
 

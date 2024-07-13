@@ -1,3 +1,9 @@
+//
+// B68K Computer - Copyright (c) 2024 Lougous
+// https://github.com/Lougous/b68k
+//
+// System/kernel - kernel header - MFP IRQ
+//
 
 #ifndef _irq_h_
 #define _irq_h_

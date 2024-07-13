@@ -1,3 +1,9 @@
+//
+// B68K Computer - Copyright (c) 2024 Lougous
+// https://github.com/Lougous/b68k
+//
+// System/kernel - debug shell - cat command
+//
 
 #include <stddef.h>
 #include <fcntl.h>

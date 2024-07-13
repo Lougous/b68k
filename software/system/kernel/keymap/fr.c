@@ -1,5 +1,11 @@
-
+//
+// B68K Computer - Copyright (c) 2024 Lougous
+// https://github.com/Lougous/b68k
+//
+// System/kernel - PS/2 keyboard
+//
 // french keyboard layout PS/2 codes
+//
 
 #define KB_F1   0xF1
 #define KB_F2   0xF2

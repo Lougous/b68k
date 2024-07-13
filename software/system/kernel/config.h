@@ -1,3 +1,9 @@
+//
+// B68K Computer - Copyright (c) 2024 Lougous
+// https://github.com/Lougous/b68k
+//
+// System/kernel - kernel configuration file
+//
 
 #ifndef _config_h_
 #define _config_h_

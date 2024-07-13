@@ -1,4 +1,12 @@
-// multi-io board driver
+//
+// B68K Computer - Copyright (c) 2024 Lougous
+// https://github.com/Lougous/b68k
+//
+// System/kernel - MIO task for b68k-io board
+//
+// multi-io board driver: SPI SDcard slots, serial port and I2C bus
+//
+
 #include <fcntl.h>
 #include <stddef.h>
 #include <types.h>

@@ -1,3 +1,9 @@
+//
+// B68K Computer - Copyright (c) 2024 Lougous
+// https://github.com/Lougous/b68k
+//
+// System/kernel - kernel header - critical section
+//
 
 #ifndef _lock_h_
 #define _lock_h_

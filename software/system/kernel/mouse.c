@@ -1,8 +1,13 @@
-// PS/2 mouse driver for MFP
+//
+// B68K Computer - Copyright (c) 2024 Lougous
+// https://github.com/Lougous/b68k
+//
+// System/kernel - PS/2 mouse driver for MFP
 //
 // because mouse inactivity or disconnect cannot be differentiated, a reset
 // command is sent when no data is received during a timeout period (see
 // K_MOUSE_TIMOUT_MS)
+//
 
 #include <string.h>
 #include <types.h>
@@ -276,8 +281,6 @@ static void _mouse_interrupt (void)
     k_unlock(lbkp);
   }
 
-  //K_PRINTF(2, "m%c-%02X\n", '0' + _ms_state, rxc);
-  
   switch (_ms_state) {
   case MS_SELF_TEST:
   case MS_ERROR:

@@ -1,7 +1,12 @@
+//
+// B68K Computer - Copyright (c) 2024 Lougous
+// https://github.com/Lougous/b68k
+//
+// System/kernel - kernel header - memory management
+//
 
 #ifndef _mem_h_
 #define _mem_h_
-
 
 typedef u32_t mem_pa_t;  // physical address
 typedef u32_t mem_va_t;  // virtual address

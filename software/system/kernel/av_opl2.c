@@ -1,3 +1,9 @@
+//
+// B68K Computer - Copyright (c) 2024 Lougous
+// https://github.com/Lougous/b68k
+//
+// System/kernel - OPL2 task for b68k-av board
+//
 
 #include <stddef.h>
 #include <string.h>
@@ -197,7 +203,7 @@ void av_opl2_task ()
 
   // for startup shime 
   OPL2_WRITE_REGISTER(0x2, 256-12);  // timer 1, 80us x 12 = 960 us
-  OPL2_WRITE_REGISTER(0x4, 0x01);  // timer control: enable timer 1
+  OPL2_WRITE_REGISTER(0x4, 0x01);    // timer control: enable timer 1
 
   // main message processing loop
   static message_t msg_out;
@@ -230,7 +236,7 @@ void av_opl2_task ()
 	
       case DEV_WRITE:
 	{
-	  /* input: char list with address (1 byte) / data (1 byte) couples */
+	  // input: char list with address (1 byte) / data (1 byte) couples
 	  // TODO: virtual => physical ?
 	  u8_t *pc = msg.body.dev_write.src;
 	  s32_t count = msg.body.dev_write.count & ~1;

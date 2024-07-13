@@ -1,3 +1,10 @@
+//
+// B68K Computer - Copyright (c) 2024 Lougous
+// https://github.com/Lougous/b68k
+//
+// System/kernel - font for graphic console
+//
+
 const u8_t font_8x10[256*4*5] __attribute__ ((aligned (4))) = {
   // character 00h
   0x00, 0x00, 

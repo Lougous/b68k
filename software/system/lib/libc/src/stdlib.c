@@ -5,6 +5,7 @@
 // System/libc - stdlib
 //
 
+#include <stdint.h>
 #include <stdlib.h>
 #include <stddef.h>
 #include <unistd.h>
@@ -33,15 +34,30 @@ void exit(int status)
   while(1);
 }
 
-long _c_holdrand;
+// source: https://en.wikipedia.org/wiki/Xorshift
+struct xorshift32_state {
+    uint32_t a;
+};
+
+struct xorshift32_state _libc_xorshift32_state;
+
+static uint32_t _xorshift32(struct xorshift32_state *state)
+{
+	/* Algorithm "xor" from p. 4 of Marsaglia, "Xorshift RNGs" */
+	uint32_t x = state->a;
+	x ^= x << 13;
+	x ^= x >> 17;
+	x ^= x << 5;
+	return state->a = x;
+}
 
 void srand(unsigned int seed) {
-  _c_holdrand = (long)seed;
+  _libc_xorshift32_state.a = seed;
 }
 
 int rand(void)
 {
-  return(((_c_holdrand = _c_holdrand * 214013L + 2531011L) >> 16) & 0x7fff);
+  return _xorshift32(&_libc_xorshift32_state);
 }
 
 int atoi(const char *nptr)

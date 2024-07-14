@@ -21,12 +21,32 @@
 
 volatile opl2_ring_buffer_t rb;
 
+static uint16_t _swap16(uint16_t w)
+{
+  asm ("ror.w #8, %0\n\t"
+       : "=r" (w)
+       : "r" (w) );
+  
+  return w;
+}
+
 static uint16_t read_UINT16LE(int fd)
 {
   uint16_t le;
   read(fd, &le, 2);
 
-  return (le >> 8) + (le << 8);
+  return _swap16(le);
+}
+
+static uint32_t _swap32(uint32_t w)
+{
+  asm ("ror.w #8, %0\n\t"
+       "swap %0\n\t"
+       "ror.w #8, %0\n\t"
+       : "=r" (w)
+       : "r" (w) );
+  
+  return w;
 }
 
 static uint32_t read_UINT32LE(int fd)
@@ -34,7 +54,7 @@ static uint32_t read_UINT32LE(int fd)
   uint32_t le;
   read(fd, &le, 4);
 
-  return (le >> 24) + ((le >> 8) & 0xff00) + ((le & 0xff00) << 8) + (le << 24);
+  return _swap32(le);
 }
 
 int do_DRO(char *fname, int fd)

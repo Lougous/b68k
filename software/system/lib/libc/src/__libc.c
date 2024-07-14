@@ -6,6 +6,7 @@
 //
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <fcntl.h>
 
 struct _IO_FILE __stdin_struct;
@@ -36,4 +37,7 @@ void __libc_init ()
   stderr = &__stderr_struct;
 
   __mem_init();
+
+  // rand
+  srand(12345678);
 }

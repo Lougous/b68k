@@ -119,9 +119,44 @@ static void __print_x(FILE *stream, unsigned int x, int to_pad)
   }
 }
 
-static unsigned int __umod10(unsigned int d)
+static unsigned short __div10w(unsigned short n, unsigned int *rem)
 {
-  return d - (((d / 10)*5) << 1);
+  unsigned int nl = (unsigned int) n;
+  unsigned int qr;
+
+  asm ("move.l %1, %0\n\t"
+       "divu #10, %0"
+       : "=r" (qr)
+       : "r" (nl));
+
+  *rem = (qr >> 16);  // remainder in upper word
+
+  return (unsigned short)qr;  // quotient in lower word
+}
+
+unsigned int __div10(unsigned int n, unsigned int *rem)
+{
+  if (n < 65536U) {
+    return (unsigned int)__div10w((unsigned short)n, rem);
+  } else {
+    unsigned int r;
+    // n = 0x A B C D E F G H
+    //       \_______/           step 1
+    //           \_______/       step 2
+    //               \_______/   step 3
+
+    // step 1
+    unsigned short q1 = __div10w(n >> 16, &r);
+    r = (r << 8) | ((n & 0xffff) >> 8);
+    // step 2
+    unsigned short q2 = __div10w(r, &r);
+    r = (r << 8) | (n & 0xff);
+    // step 2
+    unsigned short q3 = __div10w(r, &r);
+
+    *rem = r;
+    return (((unsigned int)q1) << 16) + (q2 << 8) + q3;
+  }
 }
 
 static void __print_u(FILE *stream, unsigned int d)
@@ -129,8 +164,7 @@ static void __print_u(FILE *stream, unsigned int d)
   if (d >= 10) {
     unsigned int rem;
     unsigned int q;
-    q = d / 10;
-    rem = __umod10(d);
+    q = __div10(d, &rem);
     __print_u(stream, q);
     __putchar(stream, ((int)'0') + rem);
   } else {
@@ -402,8 +436,8 @@ static char * __sprint_u(char *str, unsigned int d)
   if (d >= 10) {
     unsigned int rem;
     unsigned int q;
-    q = d / 10;
-    rem = __umod10(d);
+    
+    q = __div10(d, &rem);
     str = __sprint_u(str, q);
     *str++ = '0' + rem;
   } else {

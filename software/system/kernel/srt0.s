@@ -1,4 +1,6 @@
 #include "config.h"
+#include "b68k.h"
+
 	.text
 
 	/* interrupt vector table */
@@ -80,10 +82,9 @@ start:
 	/* disable interrupts */
 	ori.w	#0x0700, %sr
 
-	/* POST(0x00)
-	/* TODO: use #define */
-	move.b #7,0xfff00001
-	move.b #0,0xfff00000
+	/* POST(0x00) */
+	move.b #B68K_MFP_REG_POST,B68K_MFP_AD
+	move.b #0,B68K_MFP_DT
 
 	/* Clear BSS */
         lea.l   __s_bss,%a0
@@ -111,9 +112,8 @@ start:
 	lea.l  k_stktop,%sp
 
 	/* read B68K_MFP_REG_SYSCFG register */
-	/* TODO: use #define */
-	move.b #12,0xfff00001
-	move.b 0xfff00000,%d0
+	move.b #B68K_MFP_REG_SYSCFG,B68K_MFP_AD
+	move.b B68K_MFP_DT,%d0
 
 	/* if bit B68K_MFP_SYS_RAM_BOOT is set, then boot is done after bootstrap load: do not copy from flash to RAM */
 	btst	#5,%d0         /* Z set if bit #5 not set */
@@ -124,30 +124,28 @@ start:
 	/*   by CPLD at reset
 	/******************************************************/
 bootloader:
-	/* POST(0x01)
-	/* TODO: use #define */
-	move.b #7,0xfff00001
-	move.b #1,0xfff00000
+	/* POST(0x01) */
+	move.b #B68K_MFP_REG_POST,B68K_MFP_AD
+	move.b #1,B68K_MFP_DT
 
 	/* MFP register: flash data */
- 	move.b #0,0xfff00001
+ 	move.b #B68K_MFP_REG_FLASH_DATA,B68K_MFP_AD
 
 	/* TODO: use #define */
  	move.l #512,%d0
 bl_loop:
 	movea.l %d0,%a0
         addq.l #1,%d0
- 	move.b 0xfff00000,%d1
+ 	move.b B68K_MFP_DT,%d1
         move.b %d1,%a0@
 	cmpi.l #65536,%d0
 	bnes bl_loop
 
 boot_from_ram:
 	
-	/* POST(0x02)
-	/* TODO: use #define */
-	move.b #7,0xfff00001
-	move.b #2,0xfff00000
+	/* POST(0x02) */
+	move.b #B68K_MFP_REG_POST,B68K_MFP_AD
+	move.b #2,B68K_MFP_DT
 
 	/* system init */
 	jsr k_sys_init
@@ -160,38 +158,38 @@ boot_from_ram:
 	/******************************************************/
 no_int2:
 	ori	#0x0700,%sr
-	move.b #7,0xfff00001
-	move.b #130,0xfff00000
+	move.b #B68K_MFP_REG_POST,B68K_MFP_AD
+	move.b #130,B68K_MFP_DT
 	bra halt
 
 no_int3:
 	ori	#0x0700,%sr
-	move.b #7,0xfff00001
-	move.b #131,0xfff00000
+	move.b #B68K_MFP_REG_POST,B68K_MFP_AD
+	move.b #131,B68K_MFP_DT
 	bra halt
 
 no_int4:
 	ori	#0x0700,%sr
-	move.b #7,0xfff00001
-	move.b #132,0xfff00000
+	move.b #B68K_MFP_REG_POST,B68K_MFP_AD
+	move.b #132,B68K_MFP_DT
 	bra halt
 
 no_int5:
 	ori	#0x0700,%sr
-	move.b #7,0xfff00001
-	move.b #133,0xfff00000
+	move.b #B68K_MFP_REG_POST,B68K_MFP_AD
+	move.b #133,B68K_MFP_DT
 	bra halt
 
 no_int6:
 	ori	#0x0700,%sr
-	move.b #7,0xfff00001
-	move.b #134,0xfff00000
+	move.b #B68K_MFP_REG_POST,B68K_MFP_AD
+	move.b #134,B68K_MFP_DT
 	bra halt
 
 no_int7:
 	ori	#0x0700,%sr
-	move.b #7,0xfff00001
-	move.b #135,0xfff00000
+	move.b #B68K_MFP_REG_POST,B68K_MFP_AD
+	move.b #135,B68K_MFP_DT
 	bra halt
 
 	/******************************************************/
@@ -257,7 +255,7 @@ save:
 	move.l	(%sp)+,56(%a6) /* save a6 */
 
 	/* save MFP address register */
-	move.b 0xfff00001,78(%a6)	
+	move.b B68K_MFP_AD,78(%a6)	
 
 	/* would be supervisor stack before pushing irq frame (6 bytes)
 	and this function return address (4 bytes) */
@@ -312,7 +310,7 @@ _rte_stack:
 	move.w	68(%a6),-(%sp)
 
 	/* restore MFP address register */
-	move.b	78(%a6),0xfff00001  /* TODO: use #define */
+	move.b	78(%a6),B68K_MFP_AD  /* TODO: use #define */
 
 	/* restore user registers */
 	movem.l (%a6),%d0-%d7/%a0-%a6
@@ -337,8 +335,8 @@ group0:
 	ori #0x0700,%sr
 
 	/* POST code */
-	move.b #7,0xfff00001  /* TODO: use #define */
-	move.b #0xFF,0xfff00000  /* TODO: use #define */
+	move.b #B68K_MFP_REG_POST,B68K_MFP_AD
+	move.b #0xFF,B68K_MFP_DT
 
 	/* save a6 */
 	move.l	%a6,(k_stkbot)
@@ -432,8 +430,8 @@ k_lock:
 	.global k_yield
 k_yield:
 	/* TODO: use #define */
-	move.b	#12,0xfff00001       // B68K_MFP->ad = B68K_MFP_REG_SYSCFG
-	ori.b	#0x40,0xfff00000
+	move.b  #B68K_MFP_REG_SYSCFG,B68K_MFP_AD
+	ori.b   #0x40,B68K_MFP_DT
 	nop
 	rts
 	

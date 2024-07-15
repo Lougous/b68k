@@ -39,11 +39,20 @@
 #define B68K_AV_RAMDAC ((volatile struct b68k_av_ramdac_regs_t *)B68K_AV_RAMDAC_ADDRESS)
 #define B68K_AV_OPL2   ((volatile struct b68k_av_opl2_regs_t *)B68K_AV_OPL2_ADDRESS)
 
+#ifndef __ASSEMBLER__
+
 struct b68k_mfp_regs_t {
   u8_t dt;
   u8_t ad;
   u8_t stub[2];
 };
+
+#else
+
+#define B68K_MFP_DT (B68K_MFP_ADDRESS + 0)
+#define B68K_MFP_AD (B68K_MFP_ADDRESS + 1)
+
+#endif
 
 #define B68K_MFP_REG_FLASH_DATA  0  // boot flash data - address auto increment
 
@@ -109,6 +118,8 @@ struct b68k_mfp_regs_t {
 #define B68K_AV_AVMGR_GPIO_B1_MASK       0x02
 #define B68K_AV_AVMGR_GPIO_B2_MASK       0x80
 
+#ifndef __ASSEMBLER__
+
 struct b68k_av_avmgr_regs_t {
   u8_t cfgnsts;
   // 0: nSTATUS
@@ -131,8 +142,12 @@ struct b68k_av_avmgr_regs_t {
   u8_t  stub3;
 };
 
+#endif
+
 #define B68K_AV_FLEX_CFGSTS_GPU_BUSY_MASK       0x80
 #define B68K_AV_FLEX_CFGSTS_APU_PCM_HFULL_MASK  0x40
+
+#ifndef __ASSEMBLER__
 
 struct b68k_av_flex_regs_t {
   // FLEX internal registers
@@ -199,6 +214,8 @@ struct b68k_io_regs_t {
   u8_t stub[2];
 };
 
+#endif
+
 // register addresses
 
 #define B68K_IO_REG_SPI_SEL   0
@@ -250,6 +267,7 @@ struct b68k_io_regs_t {
 
 #define B68K_IO_IRQ_SERIAL_MASK  0x01
 
+#ifndef __ASSEMBLER__
 
 struct b68k_mmu_regs_t {
   u16_t base_lo;
@@ -257,5 +275,7 @@ struct b68k_mmu_regs_t {
   u16_t mask_lo;
   u16_t mask_hi;
 };
+
+#endif
 
 #endif /* _b68k_h_ */

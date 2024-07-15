@@ -1,5 +1,5 @@
+#include "b68k.h"
 
-/*#include "config.h"*/
 	.text
 
 	/* interrupt vector table */
@@ -87,9 +87,8 @@ start:
 	jsr loader
 
 	/* should never return */
-	/* TODO: use #define */
-	move.b #7,0xfff00001
-	move.b #0xFE,0xfff00000
+	move.b #B68K_MFP_REG_POST,B68K_MFP_AD
+	move.b #0xFE,B68K_MFP_DT
 halt:	
 	bra halt
 	
@@ -98,13 +97,12 @@ halt:
 	/*   by CPLD at reset
 	/******************************************************/
 bootloader:
-	/* POST(0x01)
-	/* TODO: use #define */
-	move.b #7,0xfff00001
-	move.b #1,0xfff00000
+	/* POST(0x01) */
+	move.b #B68K_MFP_REG_POST,B68K_MFP_AD
+	move.b #1,B68K_MFP_DT
 
 	/* MFP register: flash data */
- 	move.b #0,0xfff00001
+ 	move.b #B68K_MFP_REG_FLASH_DATA,B68K_MFP_AD
 
 	/* TODO: use #define */
  	lea.l loader,%a0
@@ -113,15 +111,14 @@ bootloader:
 bl_loop:
 	movea.l %d0,%a0
         addq.l #1,%d0
- 	move.b 0xfff00000,%d1	/* TODO: use #define */
+ 	move.b B68K_MFP_DT,%d1	/* TODO: use #define */
         move.b %d1,%a0@
 	cmpi.l #0x21000,%d0  /* max 4kiB */
 	bnes bl_loop
 
-	/* POST(0x02)
-	/* TODO: use #define */
-	move.b #7,0xfff00001
-	move.b #2,0xfff00000
+	/* POST(0x02) */
+	move.b #B68K_MFP_REG_POST,B68K_MFP_AD
+	move.b #2,B68K_MFP_DT
 
 	rts
 
@@ -129,15 +126,15 @@ bl_loop:
 	/* default interruption entry
 	/******************************************************/
 default:
-	/* POST code */
-	move.b #7,0xfff00001     /* TODO: use #define */
-	move.b #0xFF,0xfff00000  /* TODO: use #define */
+	/* POST(0xFF) */
+	move.b #B68K_MFP_REG_POST,B68K_MFP_AD
+	move.b #0xFF,B68K_MFP_DT
 	bra dead
 	
 irq:
-	/* POST code */
-	move.b #7,0xfff00001     /* TODO: use #define */
-	move.b #0xFD,0xfff00000  /* TODO: use #define */
+	/* POST(0xFD) */
+	move.b #B68K_MFP_REG_POST,B68K_MFP_AD
+	move.b #0xFD,B68K_MFP_DT
 	bra dead
 
 dead:

@@ -2,7 +2,7 @@
 XCROOT=m68k-linux-gnu-
 
 AS=${XCROOT}gcc
-ASFLAGS=-march=68000 -c -x assembler-with-cpp
+ASFLAGS=-I../system/kernel -march=68000 -c -x assembler-with-cpp
 
 CC=${XCROOT}gcc
 CFLAGS=-Wall -mcpu=68000 -mstrict-align -O1 -nostdlib -fno-builtin-fprintf \

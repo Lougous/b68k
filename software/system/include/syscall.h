@@ -19,6 +19,7 @@
 #define IOCTL     0x0110
 #define GETCWD    0x0111
 #define MKDIR     0x0112
+#define VFS_KILL  0x0113  // reserved to kernel
 
 typedef struct {
   char *dev;
@@ -86,6 +87,8 @@ typedef struct {
   u16_t len;
   u16_t flags;
 } mkdir_msg_body_t;
+
+// vfs_kill: uses u32 body
 
 ////////////////////////////////////////////////////////////////////////////////
 // devices messages

@@ -324,7 +324,7 @@ void system_task (void)
 	      ) {
 
 	    /* close all open files */
-	    msg_out.type = KILL;
+	    msg_out.type = VFS_KILL;
 	    msg_out.body.u32 = to_kill;
 	    sendreceive(vfs_pid, &msg_out, O_SEND | O_RECV);
 	    msg_out.type = 0;

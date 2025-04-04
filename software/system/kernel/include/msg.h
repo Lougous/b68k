@@ -13,6 +13,8 @@ extern pid_t sendreceive (pid_t to, message_t *pa_msg, u16_t ops);
 #define send(to, pa_msg)  sendreceive((to), (pa_msg), O_SEND)
 #define receive(to, pa_msg)  sendreceive((to), (pa_msg), O_RECV)
 
+typedef void (* message_handler_pfc_t)(pid_t from, message_t *msg);
+    
 /* macros */
 extern int sendreceive_vfs_open (message_t *msg, const char *pathname, int flags);
 extern int sendreceive_vfs_close(message_t *msg, int fd);

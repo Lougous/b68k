@@ -114,8 +114,6 @@ const message_handler_pfc_t _vfs_handlers[MASK+1] = {
 #define VFS_KILL  0x0113  // reserved to kernel
   */
 
-static message_t _msg_out;
-
 void vfs_task (void)
 {
   u32_t mnt;
@@ -146,8 +144,6 @@ void vfs_task (void)
 
   _vfs_free_vnode_list = &_vfs_vnode_table[0];
 
-  _msg_out.type = 0;
-  
   while (1) {
     static message_t msg;
     
@@ -486,6 +482,8 @@ static void _vfs_close (pid_t from, message_t *msg)
 
 static void _vfs_kill (pid_t from, message_t *msg)
 {
+  message_t resp;
+  
   /* allowed for kernel tasks only */
   if (proc_get_uid(from) == PROC_UID_KERNEL) {
     pid_t pid = msg->body.u32;
@@ -506,7 +504,7 @@ static void _vfs_kill (pid_t from, message_t *msg)
   }
 
   /* acknowledge (no argument) */
-  send(from, &_msg_out);
+  send(from, &resp);
 }
 
 static void _vfs_read (pid_t from, message_t *msg)
@@ -669,12 +667,12 @@ static void _vfs_getcwd (pid_t from, message_t *msg)
   mem_pa_t buf = va_to_pa(from, (mem_va_t)msg->body.getcwd.buf, size);
   
   if (! buf) {
-    _msg_out.body.s32 = -EFAULT;
+    resp.body.s32 = -EFAULT;
   } else if (size > strlen(_vfs_proc_table[from].cdir)) {
     strcpy((char *)buf, _vfs_proc_table[from].cdir);
-    _msg_out.body.s32 = 0;
+    resp.body.s32 = 0;
   } else {
-    _msg_out.body.s32 = -ERANGE;
+    resp.body.s32 = -ERANGE;
   }
   
   send(from, &resp);
@@ -725,6 +723,8 @@ static void _vfs_mkdir (pid_t pid, message_t *msg)
 
 static void _vfs_fork (pid_t from, message_t *msg)
 {
+  message_t resp;
+
   /* allowed for kernel tasks only */
   if (proc_get_uid(from) == PROC_UID_KERNEL) {
     pid_t ppid = msg->body.vfs_fork.parent;
@@ -747,7 +747,7 @@ static void _vfs_fork (pid_t from, message_t *msg)
     }
     
     /* acknowledge (no argument) */
-    send(from, &_msg_out);
+    send(from, &resp);
   }
   // TODO : else
 }

@@ -17,7 +17,6 @@
 #define VFS_FORK  0x0108  // reserved to kernel
 #define CHDIR     0x0109
 #define IOCTL     0x0110
-#define GETCWD    0x0111
 #define MKDIR     0x0112
 #define VFS_KILL  0x0113  // reserved to kernel
 
@@ -76,11 +75,6 @@ typedef struct {
   int request;
   void *ptr;
 } ioctl_msg_body_t;
-
-typedef struct {
-  const char *buf;
-  u16_t size;
-} getcwd_msg_body_t;
 
 typedef struct {
   const char *path;
@@ -181,7 +175,6 @@ typedef struct {
     vfs_fork_msg_body_t vfs_fork;
     chdir_msg_body_t chdir;
     ioctl_msg_body_t ioctl;
-    getcwd_msg_body_t getcwd;
     mkdir_msg_body_t mkdir;
 
     // devices

@@ -4,7 +4,11 @@
 //
 // System/kernel - VFS task (virtual file system)
 //
+// based on : Vnodes: An Architecture for Multiple File System Types in Sun UNIX
+//            S.R. Kleiman / Sun Microsystems
+//
 
+#include <stdint.h>
 #include <types.h>
 #include <stddef.h>
 #include <fcntl.h>
@@ -20,46 +24,50 @@
 #include "mem.h"
 #include "proc.h"
 #include "dev.h"
-#include "fs.h"
+#include "vfs.h"
 #include "msg.h"
 #include "lock.h"
 #include "debug.h"
 
-/* mount points */
-struct _vfs_mount_t {
-  char *path;
-  u8_t type;
-  const fs_operations_t *ops;
-  fs_context_t ctx;
+// mount points
+struct vfs _vfs_vfs_table[K_VFS_COUNT];
+
+#define _K_VFS_NULL  ((struct vfs *) 0)
+
+struct vfs *_vfs_free_vfs_list;
+struct vfs *_vfs_used_vfs_list;
+
+// list of managed file systems
+struct fs_type {
+  const char *name;
+  int16_t (* mount)(struct vfs *pvfs, dev_t *pdev);
 };
 
-struct _vfs_mount_t _vfs_mounts[K_MOUNT_COUNT];
+extern int16_t rfs_mount(struct vfs *pvfs, dev_t *pdev);
+extern int16_t devfs_mount(struct vfs *pvfs, dev_t *pdev);
 
-/* vnodes */
-struct _vfs_vnode_t {
-  struct _vfs_vnode_t *next;
-  int oflags;
-  u16_t count;
-  const fs_operations_t *ops;
-  fs_file_context_t fctx;
+static const struct fs_type _vfs_fs_types[] = {
+  { .name = "devfs", .mount = devfs_mount },
+  { .name = "rfs", .mount = rfs_mount },
+  //  { .name = "fat", .mount = fat_mount }
 };
 
-struct _vfs_vnode_t _vfs_vnode_table[K_VNODE_COUNT];
+// vnodes pool
+struct vnode _vfs_vnode_table[K_VNODE_COUNT];
 
-#define _K_VNODE_NULL  ((struct _vfs_vnode_t *) 0)
+#define _K_VNODE_NULL  ((struct vnode *) 0)
 
-/* vnode to root directory */
-#define _K_VNODE_ROOT  0
+struct vnode *_vfs_free_vnode_list;
 
-struct _vfs_vnode_t *_vfs_free_vnode_list;
+struct vnode *_vfs_vnroot;
 
 /* processes data */
 struct _vfs_proc_t {
   //root directory
   // current directory
-  char cdir[K_MAX_DIRNAME_LEN];
-  // file descriptors
-  struct _vfs_vnode_t *fd_table[K_PROC_FD_COUNT];
+  struct vnode *cdir;
+  // file descriptors (index: file descriptor)
+  struct vnode *fd_table[K_PROC_FD_COUNT];
 };
 
 struct _vfs_proc_t _vfs_proc_table[K_PROC_COUNT];
@@ -75,7 +83,6 @@ static void _vfs_lseek (pid_t from, message_t *msg);
 static void _vfs_fork (pid_t from, message_t *msg);
 static void _vfs_chdir (pid_t from, message_t *msg);
 static void _vfs_ioctl (pid_t from, message_t *msg);
-static void _vfs_getcwd (pid_t from, message_t *msg);
 static void _vfs_mkdir (pid_t from, message_t *msg);
 static void _vfs_kill (pid_t from, message_t *msg);
 
@@ -92,27 +99,10 @@ const message_handler_pfc_t _vfs_handlers[MASK+1] = {
   [MASK & VFS_FORK] = (message_handler_pfc_t)_vfs_fork,
   [MASK & CHDIR]    = (message_handler_pfc_t)_vfs_chdir,
   [MASK & IOCTL]    = (message_handler_pfc_t)_vfs_ioctl,
-  [MASK & GETCWD]   = (message_handler_pfc_t)_vfs_getcwd,
   [MASK & MKDIR]    = (message_handler_pfc_t)_vfs_mkdir,
   [MASK & VFS_KILL] = (message_handler_pfc_t)_vfs_kill
 };
 
-
-  /*
-#define MOUNT     0x0101
-#define OPEN      0x0102
-#define GETDENTS  0x0103
-#define CLOSE     0x0104
-#define READ      0x0105
-#define WRITE     0x0106
-#define LSEEK     0x0107
-#define VFS_FORK  0x0108  // reserved to kernel
-#define CHDIR     0x0109
-#define IOCTL     0x0110
-#define GETCWD    0x0111
-#define MKDIR     0x0112
-#define VFS_KILL  0x0113  // reserved to kernel
-  */
 
 void vfs_task (void)
 {
@@ -122,28 +112,38 @@ void vfs_task (void)
 
   K_PRINTF(3, "vfs: starting task\n");
 
-  /* initialization */
-  for (mnt = 0; mnt < K_MOUNT_COUNT; mnt++) {
-    _vfs_mounts[mnt].type = 0;
+  // init mounted vfs list
+  for (mnt = 0; mnt < K_VFS_COUNT-1; mnt++) {
+    _vfs_vfs_table[mnt].vfs_next = &_vfs_vfs_table[mnt+1];
   }
 
+  _vfs_vfs_table[mnt].vfs_next = _K_VFS_NULL;  // last
+
+  _vfs_free_vfs_list = &_vfs_vfs_table[0];
+  _vfs_used_vfs_list = _K_VFS_NULL;
+
+  // init processes context
   for (pid = 0; pid < K_PROC_COUNT; pid++) {
-    _vfs_proc_table[pid].cdir[0] = '/';
-    _vfs_proc_table[pid].cdir[1] = 0;
+    _vfs_proc_table[pid].cdir = _K_VNODE_NULL;
     
     memset(_vfs_proc_table[pid].fd_table, 0, sizeof(_vfs_proc_table[pid].fd_table));
   }
-  
+
+  // vnodes
   memset(_vfs_vnode_table, 0, sizeof(_vfs_vnode_table));
   
   for (fd = 0; fd < K_VNODE_COUNT-1; fd++) {
+    // setup linked list
     _vfs_vnode_table[fd].next = &_vfs_vnode_table[fd+1];
   }
 
-  _vfs_vnode_table[fd].next = 0;  /* last */
+  _vfs_vnode_table[fd].next = _K_VNODE_NULL;  // last
 
   _vfs_free_vnode_list = &_vfs_vnode_table[0];
 
+  _vfs_vnroot = _K_VNODE_NULL;
+  
+  // main loop
   while (1) {
     static message_t msg;
     
@@ -160,42 +160,14 @@ void vfs_task (void)
   }
 }
 
-static struct _vfs_mount_t *_vfs_alloc_mount ()
-{
-  u32_t mnt;
-
-  for (mnt = 0; mnt < K_MOUNT_COUNT; mnt++) {
-    if (_vfs_mounts[mnt].type == 0)
-      return &_vfs_mounts[mnt];
-  }
-
-  // out of memory/resource
-  return 0;
-}
-
-static void _vfs_free_mount (struct _vfs_mount_t *mnt)
-{
-  // TODO free(mnt->path);
-  mnt->type = 0;
-  mnt->ops  = 0;
-
-  return;
-}
-  
 static int _vfs_alloc_fd (pid_t pid)
 {
   int fd;
-  struct _vfs_vnode_t *pfd = _vfs_free_vnode_list;
 
-  if (pfd) {
-    for (fd = 0; fd < K_PROC_FD_COUNT; fd++) {
-      if (_vfs_proc_table[pid].fd_table[fd] == 0) {
-	/* found free FD for process */
-	_vfs_proc_table[pid].fd_table[fd] = pfd;
-	pfd->count = 1;
-	_vfs_free_vnode_list = _vfs_free_vnode_list->next;
-	return fd;
-      }
+  for (fd = 0; fd < K_PROC_FD_COUNT; fd++) {
+    if (_vfs_proc_table[pid].fd_table[fd] == 0) {
+      /* found free FD for process */
+      return fd;
     }
   }
   
@@ -205,99 +177,194 @@ static int _vfs_alloc_fd (pid_t pid)
 
 static int _vfs_free_fd (pid_t pid, int fd)
 {
-  struct _vfs_vnode_t *pfd = _vfs_proc_table[pid].fd_table[fd];
+  _vfs_proc_table[pid].fd_table[fd] = 0;
 
-  
-  if (pfd) {
-    pfd->count--;
-    
-    if (pfd->count == 0) {
-      /* no process left, free FD */
-      pfd->next = _vfs_free_vnode_list;
-      _vfs_free_vnode_list = pfd;
-    }
-
-    _vfs_proc_table[pid].fd_table[fd] = 0;
-
-    return 0;
-  }
-  
-  return -1;
+  return 0;
 }
 
-static void _vfs_mount (pid_t from, message_t *msg)
+char *_trim_slash(char *str)
+{
+  while (*str && (*str != '/')) str++;
+  while (*str && (*str == '/')) str++;
+
+  return str;
+}
+  
+int _lookuppn (char *nm, struct vnode **ppv, pid_t pid)
+{
+  struct vnode *pvn;
+  int ret;
+  
+  if (nm[0] == '/') {
+    // absolute path
+    nm = _trim_slash(nm);
+    pvn = _vfs_vnroot;
+  } else {
+    // relative path
+    pvn = _vfs_proc_table[pid].cdir;
+
+    // no current directory
+    if (!pvn) {
+      pvn = _vfs_vnroot;
+    }
+  }
+
+  if (!pvn) {
+    // likely no root FS mounted yet
+    return -ENOENT;
+  }
+
+  VN_HOLD(pvn);
+
+  while (*nm) {
+    K_PRINTF(3, "vfs: %d: vn_lookup: %s\n", pid, nm);
+    struct vfs *mounted = pvn->v_vfsmountedhere;
+
+    if (mounted) {
+      K_PRINTF(3, "vfs: %d: vn_lookup: change VFS\n", pid);
+      (void)mounted->vfs_op->vfs_root(mounted, ppv);
+      VN_RELE(pvn);
+      pvn = *ppv;
+    }
+    
+    ret = pvn->v_op->vn_lookup(pvn, nm, ppv, pid);
+    VN_RELE(pvn);
+    pvn = *ppv;
+
+    if (ret) return ret;
+
+    // next in name tree
+    nm = _trim_slash(nm);
+  }
+
+  // last vnode mount point ?
+  struct vfs *mounted = pvn->v_vfsmountedhere;
+
+  if (mounted) {
+    K_PRINTF(3, "vfs: %d: vn_lookup: change VFS\n", pid);
+    (void)mounted->vfs_op->vfs_root(mounted, ppv);
+    VN_RELE(pvn);
+  }
+  
+  return 0;
+}
+
+static void _vfs_mount (pid_t pid, message_t *msg)
 {
   message_t resp = { .body.u32 = 0 };  // OK
   
-  /* allowed for kernel tasks only */
+  // allowed for kernel tasks only
   // TODO : allow for root user
-  if (proc_get_uid(from) != PROC_UID_KERNEL) {
+  if (proc_get_uid(pid) != PROC_UID_KERNEL) {
     resp.body.u32 = -EPERM;
   }
 
-  //_msg_out.body.u32 = _vfs_mount(msg.body.mount.dev,
-  //				 msg.body.mount.path_to,
-  //				 msg.body.mount.type);
-  char *dev = msg->body.mount.dev;
-  const char *path_to = msg->body.mount.path_to;
-  char *type = msg->body.mount.type;
-  struct _vfs_mount_t *pmnt = _vfs_alloc_mount();
+  // check parameters
+  char *path_to = msg->body.mount.path_to; // TODO use va_to_pa when allowed to some user
+  char *type = msg->body.mount.type; // TODO use va_to_pa when allowed to some user
+  char *dev = msg->body.mount.dev; // TODO use va_to_pa when allowed to some user
+
+  if ((! path_to) || (! type) || (! dev)) {
+    resp.body.u32 = -EFAULT;   // memory fault
+    goto _vfs_mount_exit;
+  }
+
+  // mount FS  
+  struct vfs *pvfs = _vfs_free_vfs_list;
+  
+  if (! pvfs) {
+    resp.body.u32 = -ENOMEM;   // out of resources
+    goto _vfs_mount_exit;
+  }
+
+  // mount function with dedicated function to the specified type
   dev_t *pdev = dev_get(dev);
 
-  // find free mount point
-  if (pmnt == 0) {
-    resp.body.u32 = -ENOMEM;  // out of resources
-  }
-  
-  if (pdev == 0) {
-    // not a registered device
-    if (dev && (strcmp(dev, "devfs") == 0) &&
-	type && (strcmp(type, "devfs") == 0)) {
-      // devfs
-      pmnt->path = (char *)path_to;  // TODO strdup
-      pmnt->type = FS_TYPE_DEV;
-      pmnt->ops  = &_fs_devfs_fsops;
+  int16_t (* pmount)(struct vfs *pvfs, dev_t *pdev) = 0;
 
-      K_PRINTF(2, "vfs: mounting devfs to %s\n", path_to);      
-    } else {
-      resp.body.u32 = -ENODEV;  // unknown device
-    }
-  } else {
-    // registered device
-    if (
-	(pdev->attr.attr_type == DEV_ATTR_DISK_PARTITION) &&
-	((type == 0 && pdev->attr.partition.type == 6) ||
-	 (type && (strcmp(type, "fat") == 0)))
-	)
-      {
-	// FAT partition
-	pmnt->path = (char *)path_to;  // TODO strdup
-	pmnt->type = FS_TYPE_FAT;
-	pmnt->ops  = &_fs_fat_fsops;
-	pmnt->ctx.fat.dev         = pdev;
-	pmnt->ctx.fat.FirstSector = pdev->attr.partition.sector_start;
-	pmnt->ctx.fat.NbSector    = pdev->attr.partition.sector_cnt;
+  if (type) {
+    int16_t ft;
 
-	K_PRINTF(2, "vfs: mounting %s, type fat\n", dev);
-	resp.body.u32 = fat_mount(&pmnt->ctx);
+    for (ft = 0; ft < (sizeof(_vfs_fs_types)/sizeof(struct fs_type)); ft++) {
+      if (strcmp(type, _vfs_fs_types[ft].name) == 0) {
+	pmount = _vfs_fs_types[ft].mount;
       }
-    else if (strcmp(type, "rfs") == 0) {
-      // RFS
-      pmnt->path = (char *)path_to;  // TODO strdup
-      pmnt->type = FS_TYPE_RFS;
-      pmnt->ops  = &_fs_rfs_fsops;
-      pmnt->ctx.rfs.dev = pdev;
-      
-      K_PRINTF(2, "vfs: mounting %s, type rfs\n", dev);
-      resp.body.u32 = rfs_mount(&pmnt->ctx);
-    } else {
-      resp.body.u32 = -EINVAL;  // bad type
     }
   }
 
-  send(from, &resp);
+  //  unknown type of FS
+  if (! pmount) {
+    resp.body.u32 = -ENODEV;   // out of resources
+    goto _vfs_mount_exit;
+  }
+
+  // mount FS
+  if (pmount(pvfs, pdev)) {
+    resp.body.u32 = -EINVAL;   // invalid FS
+    goto _vfs_mount_exit;
+  }
+
+  // get root vnode
+  struct vnode *pvn_root;
+  (void)pvfs->vfs_op->vfs_root(pvfs, &pvn_root);
+
+  if (!pvn_root) {
+    pvfs->vfs_op->vfs_unmount(pvfs);
+    // TODO: might be other cause
+    resp.body.u32 = -EINVAL;   // invalid FS
+    goto _vfs_mount_exit;
+  }
+
+  // target directory
+  if (strcmp(path_to, "/") == 0) {
+    // mount root
+    if (_vfs_used_vfs_list) {
+      // root already mounted
+      VN_RELE(pvn_root);
+      pvfs->vfs_op->vfs_unmount(pvfs);
+      resp.body.u32 = -EBUSY;
+      goto _vfs_mount_exit;
+    }
+
+    pvfs->vfs_vnodecovered = _K_VNODE_NULL;
+    _vfs_vnroot = pvn_root;
+
+    goto _vfs_mount_success;
+  }
+
+  // get vnode for directory to mount at
+  struct vnode *pvn_at;
+  resp.body.u32 = _lookuppn(path_to, &pvn_at, pid);
+
+  if (resp.body.u32) {
+    VN_RELE(pvn_root);
+    pvfs->vfs_op->vfs_unmount(pvfs);
+    goto _vfs_mount_exit;
+  }
+
+  if (pvn_at->v_type != VDIR) {
+    VN_RELE(pvn_root);
+    VN_RELE(pvn_at);
+    pvfs->vfs_op->vfs_unmount(pvfs);
+    resp.body.u32 = -ENOTDIR;
+    goto _vfs_mount_exit;
+  }
+
+  pvfs->vfs_vnodecovered = pvn_at;
+
+ _vfs_mount_success:
+  pvn_at->v_vfsmountedhere = pvfs;
+  _vfs_free_vfs_list = _vfs_free_vfs_list->vfs_next;
+  pvfs->vfs_next = _vfs_used_vfs_list;
+  _vfs_used_vfs_list = pvfs;
+
+  K_PRINTF(3, "vfs: mounted %s at %s (%)\n", dev, path_to, type);
+
+ _vfs_mount_exit:
+  send(pid, &resp);
 }
 
+/*
 u32_t vfs_umount (const char *path_to)
 {
   u32_t mnt;
@@ -320,107 +387,85 @@ u32_t vfs_umount (const char *path_to)
     return -1;
   }
 }
+*/
 
-static struct _vfs_vnode_t *_vfs_vnode_from_fd(pid_t pid, unsigned int fd)
+static struct vnode *_vfs_vnode_from_fd(pid_t pid, unsigned int fd)
 {
   if (fd < K_PROC_FD_COUNT) {
     return _vfs_proc_table[pid].fd_table[fd];
   }
 
-  return 0;
+  return _K_VNODE_NULL;
 }
 
-static int _open (pid_t pid, const char *pathname, int flags)
-{
-  u32_t mnt;
-  struct _vfs_mount_t *pmnt = 0;
-  int ret;
-  int fd = _vfs_alloc_fd(pid);
 
 
-  if (fd < 0) {
-    return -ENFILE;
-  }
-  
-  struct _vfs_vnode_t *pfd = _vfs_vnode_from_fd(pid, fd);
-  
-  // find mount point this file belongs to
-  for (mnt = 0; mnt < K_MOUNT_COUNT; mnt++) {
-
-    //if (_vfs_mounts[mnt].type) printf("%s = %s ?\n", _vfs_mounts[mnt].path, pathname);
-  
-    
-    if (_vfs_mounts[mnt].type &&
-	(strncmp(_vfs_mounts[mnt].path, pathname, strlen(_vfs_mounts[mnt].path)) == 0)) {
-      pmnt = &_vfs_mounts[mnt];
-    }    
-  }
-
-  if (pmnt == 0) {
-    _vfs_free_fd(pid, fd);
-    return -ENOENT;  // no match
-  }
-  
-  pfd->oflags   = flags;
-  pfd->ops      = pmnt->ops;
-  pfd->fctx.ctx = &pmnt->ctx;
-
-  ret = pmnt->ops->open(&pfd->fctx, pathname + strlen(pmnt->path), flags);
-
-  if (ret < 0) {
-    _vfs_free_fd(pid, fd);
-    return ret;
-  }
-  
-  K_PRINTF(3, "vfs: open %s (%i) by %u\n", pathname, fd, pid);
-
-  return fd;
-}
-
-static void _vfs_open (pid_t from, message_t *msg)
+static void _vfs_open (pid_t pid, message_t *msg)
 {
   message_t resp;
   //K_PRINTF(2, "vfs: OPEN: %Xh\n", (mem_va_t)msg.body.open.pathname);
 	
-  int len = msg->body.open.len;
-  mem_pa_t pathname = va_to_pa(from, (mem_va_t)msg->body.open.pathname, len);
-  static char fullname[K_MAX_DIRNAME_LEN+K_MAX_FILENAME_LEN+2];
-  char *pdst = fullname;
-  char *psrc = _vfs_proc_table[from].cdir;
+  int16_t len = msg->body.open.len;
+  mem_pa_t pathname = va_to_pa(pid, (mem_va_t)msg->body.open.pathname, len);
 
-  K_PRINTF(3, "vfs: PID-%i OPEN: [%s]/[%s]\n", from, (char *)_vfs_proc_table[from].cdir, (char *)pathname);
+  K_PRINTF(3, "vfs: PID-%i OPEN: %Xh\n", pid, (mem_va_t)msg->body.open.pathname);
 
-  if (pathname) {
-    if (len && ((char *)pathname)[0] != '/') {
-      /* relative path, concat current directory with path */
-      while (*psrc) {
-	*pdst++ = *psrc++;
-      }
-      
-      *pdst++ = '/';
-    }
-    
-    psrc = (char *)pathname;
-    
-    while (len--) {
-      *pdst++ = *psrc++;
-    }
-    
-    *pdst = 0;
-    
-    K_PRINTF(3, "vfs: OPEN: '%s'\n", (char *)fullname);
-    
-    resp.body.s32 = _open (from,
-			   (char *)fullname,
-			   msg->body.open.flags);
-  } else {
+  if (! len) {
+    K_PRINTF(3, "vfs: PID-%i OPEN: ENOENT\n", pid);
+    resp.body.s32 = -ENOENT;
+    goto _vfs_open_exit;
+  }
+  
+  if (! pathname) {
+    K_PRINTF(3, "vfs: PID-%i OPEN: EFAULT\n", pid);
     resp.body.s32 = -EFAULT;
+    goto _vfs_open_exit;
   }
 
-  send(from, &resp);
+  char *path = (char *)pathname;
+
+  if (path[len]) {
+    K_PRINTF(3, "vfs: PID-%i OPEN: ENOENT\n", pid);
+    resp.body.s32 = -EINVAL;
+    goto _vfs_open_exit;
+  }
+  
+  struct vnode *pvn;
+  resp.body.s32 = _lookuppn(path, &pvn, pid);
+
+  if (resp.body.s32) {
+    K_PRINTF(3, "vfs: PID-%i OPEN: %i\n", pid, resp.body.s32);
+    goto _vfs_open_exit;
+  }
+    
+  int fd = _vfs_alloc_fd(pid);
+
+  if (fd < 0) {
+    K_PRINTF(3, "vfs: PID-%i OPEN: EMFILE\n", pid);
+    VN_RELE(pvn);
+    resp.body.s32 = -EMFILE;
+    goto _vfs_open_exit;
+  }
+  
+  resp.body.s32 = pvn->v_op->vn_open(pvn, msg->body.open.flags, pid);
+  
+  if (resp.body.s32) {
+    K_PRINTF(3, "vfs: PID-%i OPEN: %i\n", pid, resp.body.s32);
+    VN_RELE(pvn);
+    _vfs_free_fd(pid, fd);
+    goto _vfs_open_exit;
+  }
+
+  // success
+  _vfs_proc_table[pid].fd_table[fd] = pvn;
+  
+  K_PRINTF(3, "vfs: PID-%i OPEN: %s\n", pid, (char *)path);
+
+ _vfs_open_exit:
+  send(pid, &resp);
 }
 
-static void _vfs_getdents (pid_t from, message_t *msg)
+static void _vfs_getdents (pid_t pid, message_t *msg)
 {
   message_t resp;
 
@@ -428,86 +473,99 @@ static void _vfs_getdents (pid_t from, message_t *msg)
   unsigned int count = msg->body.getdents.count;
   count = count > K_MAX_DIRENT_LEN ? K_MAX_DIRENT_LEN : count;
   
-  mem_pa_t buf = va_to_pa(from, (mem_va_t)msg->body.getdents.dirp, count);
+  mem_pa_t buf = va_to_pa(pid, (mem_va_t)msg->body.getdents.dirp, count);
   
-  if (buf) {
-    struct _vfs_vnode_t *pfd = _vfs_vnode_from_fd(from, msg->body.getdents.fd);
-
-    if (pfd) {
-      if (pfd->oflags == O_DIRECTORY) {
-	//printf("vfs_getdents ->\n");
-	int i =  pfd->ops->getdents(&pfd->fctx, (struct dirent *)buf, count);
-	//printf("vfs_getdents <- %i\n", i);
-	resp.body.s32 = i;
-      } else {
-	resp.body.s32 = -ENOTDIR;
-      }
-    } else {
-      resp.body.s32 = -EBADF;
-    }
-
-  } else {
+  if (! buf) {
     resp.body.s32 = -EACCESS;
+    goto _vfs_getdents_exit;
   }
-  
-  send(from, &resp);
+
+  struct vnode *pvn = _vfs_vnode_from_fd(pid, msg->body.getdents.fd);
+
+  if (! pvn) {
+    resp.body.s32 = -EBADF;
+    goto _vfs_getdents_exit;
+  }
+
+  if (pvn->v_type != VDIR) {
+    resp.body.s32 = -ENOTDIR;
+    goto _vfs_getdents_exit;
+  }
+
+  // TODO: check directory is open
+
+  resp.body.s32 = pvn->v_op->vn_getdents(pvn, (char *)buf, count);
+
+ _vfs_getdents_exit:
+  send(pid, &resp);
 }
 
+/*
 static int _close(pid_t pid, int fd)
 {
-  struct _vfs_vnode_t *pfd = _vfs_vnode_from_fd(pid, fd);
 
-  // TODO: flush/sync ?
-  if (pfd) {
-    int i =  pfd->ops->close(&pfd->fctx);
+  resp.body.s32 = pvn->ops->close(pvn, pid);
 
-    if (i >= 0) {
-      _vfs_free_fd(pid, fd);
-
-      K_PRINTF(3, "vfs: close %u by %u\n", fd, pid);
-    }
-    
-    return i;
-  }
-
-  return -EBADF;
+  _vfs_free_fd(pid, fd);
+  VN_RELE(pvn);
+  
 }
+*/
 
-static void _vfs_close (pid_t from, message_t *msg)
+static void _vfs_close (pid_t pid, message_t *msg)
 {
   message_t resp;
-  resp.body.s32 = _close(from, msg->body.close.fd);
-  send(from, &resp);
+  int fd = msg->body.close.fd;
+
+  // TODO: flush/sync ?
+  struct vnode *pvn = _vfs_vnode_from_fd(pid, fd);
+
+  if (! pvn) {
+    resp.body.s32 = -EBADF;
+    goto _vfs_close_exit;
+  }
+
+  resp.body.s32 = pvn->v_op->vn_close(pvn, pid);
+
+  VN_RELE(pvn);
+  _vfs_free_fd(pid, fd);
+
+ _vfs_close_exit:
+  send(pid, &resp);
 }
 
-static void _vfs_kill (pid_t from, message_t *msg)
+static void _vfs_kill (pid_t pid, message_t *msg)
 {
   message_t resp;
   
-  /* allowed for kernel tasks only */
-  if (proc_get_uid(from) == PROC_UID_KERNEL) {
+  // allowed for kernel tasks only: actual user kill syscall is to send through system task
+  if (proc_get_uid(pid) == PROC_UID_KERNEL) {
     pid_t pid = msg->body.u32;
     int fd;
     
     /* close any file for killed process */
     for (fd = 0; fd < K_PROC_FD_COUNT; fd++) {
-      if (_vfs_proc_table[pid].fd_table[fd]) {
-	_close(pid, fd);
-	//_vfs_proc_table[pid].fd_table[fd] = 0;
+      struct vnode *pvn = _vfs_vnode_from_fd(pid, fd);
+      
+      if (pvn) {
+	(void)pvn->v_op->vn_close(pvn, pid);
+	VN_RELE(pvn);
+	_vfs_free_fd(pid, fd);
       }
     }
     
-    /* default current directory */
-    _vfs_proc_table[pid].cdir[0] = '/';
-    _vfs_proc_table[pid].cdir[1] = 0;
-    
+    // default current directory
+    if (_vfs_proc_table[pid].cdir) {
+      VN_RELE(_vfs_proc_table[pid].cdir);
+      _vfs_proc_table[pid].cdir = _K_VNODE_NULL;
+    }
   }
 
   /* acknowledge (no argument) */
-  send(from, &resp);
+  send(pid, &resp);
 }
 
-static void _vfs_read (pid_t from, message_t *msg)
+static void _vfs_read (pid_t pid, message_t *msg)
 {
   message_t resp;
   
@@ -515,16 +573,16 @@ static void _vfs_read (pid_t from, message_t *msg)
   unsigned int count = msg->body.read.count;
   count = count > K_MAX_READWRITE_LEN ? K_MAX_READWRITE_LEN : count;
   
-  mem_pa_t buf = va_to_pa(from, (mem_va_t)msg->body.read.buf, count);
+  mem_pa_t buf = va_to_pa(pid, (mem_va_t)msg->body.read.buf, count);
   
   if (buf) {
-    struct _vfs_vnode_t *pfd = _vfs_vnode_from_fd(from, msg->body.read.fd);
+    struct vnode *pvn = _vfs_vnode_from_fd(pid, msg->body.read.fd);
 
-    if (pfd) {
-      if (pfd->oflags != O_DIRECTORY) {
-	resp.body.s32 = pfd->ops->read(&pfd->fctx, (char *)buf, count);
-      } else {
+    if (pvn) {
+      if (pvn->v_type == VDIR) {
 	resp.body.s32 = -EISDIR;
+      } else {
+	resp.body.s32 = pvn->v_op->vn_read(pvn, (char *)buf, count, pid);
       }
     } else {
       resp.body.s32 = -EBADF;
@@ -534,10 +592,10 @@ static void _vfs_read (pid_t from, message_t *msg)
     resp.body.s32 = -EACCESS;
   }
   
-  send(from, &resp);
+  send(pid, &resp);
 }
 
-static void _vfs_write (pid_t from, message_t *msg)
+static void _vfs_write (pid_t pid, message_t *msg)
 {
   message_t resp;
   
@@ -545,16 +603,16 @@ static void _vfs_write (pid_t from, message_t *msg)
   unsigned int count = msg->body.write.count;
   count = count > K_MAX_READWRITE_LEN ? K_MAX_READWRITE_LEN : count;
 	
-  mem_pa_t buf = va_to_pa(from, (mem_va_t)msg->body.write.buf, count);
+  mem_pa_t buf = va_to_pa(pid, (mem_va_t)msg->body.write.buf, count);
 
   if (buf) {
-    struct _vfs_vnode_t *pfd = _vfs_vnode_from_fd(from, msg->body.write.fd);
+    struct vnode *pvn = _vfs_vnode_from_fd(pid, msg->body.write.fd);
 
-    if (pfd) {
-      if (pfd->oflags != O_DIRECTORY) {
-	resp.body.s32 = pfd->ops->write(&pfd->fctx, (char *)buf, count);
-      } else {
+    if (pvn) {
+      if (pvn->v_type == VDIR) {
 	resp.body.s32 = -EISDIR;
+      } else {
+	resp.body.s32 = pvn->v_op->vn_write(pvn, (char *)buf, count, pid);
       }
     } else {
       resp.body.s32 = -EBADF;
@@ -564,169 +622,172 @@ static void _vfs_write (pid_t from, message_t *msg)
     resp.body.s32 = -EACCESS;
   }
 
-  send(from, &resp);
+  send(pid, &resp);
 }
 
-static void _vfs_lseek (pid_t from, message_t *msg)
+static void _vfs_lseek (pid_t pid, message_t *msg)
 {
   message_t resp;
-  struct _vfs_vnode_t *pfd = _vfs_vnode_from_fd(from, msg->body.lseek.fd);
+  struct vnode *pvn = _vfs_vnode_from_fd(pid, msg->body.lseek.fd);
 
-  if (! pfd) {
+  if (! pvn) {
     resp.body.s32 = -EBADF;
   } else {
-    resp.body.s32 = pfd->ops->lseek(&pfd->fctx, msg->body.lseek.offset, msg->body.lseek.whence);
+    resp.body.s32 = pvn->v_op->vn_lseek(pvn, msg->body.lseek.offset, msg->body.lseek.whence);
   }
   
-  send(from, &resp);
+  send(pid, &resp);
 }
 
-static void _vfs_ioctl (pid_t from, message_t *msg)
+static void _vfs_ioctl (pid_t pid, message_t *msg)
 {
   message_t resp;
-  struct _vfs_vnode_t *pfd = _vfs_vnode_from_fd(from, msg->body.ioctl.fd);
+  struct vnode *pvn = _vfs_vnode_from_fd(pid, msg->body.ioctl.fd);
 
-  if (! pfd) {
+  if (! pvn) {
     resp.body.s32 = -EBADF;
   } else {
-    resp.body.s32 = pfd->ops->ioctl(&pfd->fctx, from, msg->body.ioctl.request, (mem_va_t)msg->body.ioctl.ptr);
+    resp.body.s32 = pvn->v_op->vn_ioctl(pvn, msg->body.ioctl.request, (mem_va_t)msg->body.ioctl.ptr, pid);
   }
   
-  send(from, &resp);
+  send(pid, &resp);
 }
 
-static void _vfs_chdir (pid_t from, message_t *msg)
+static void _vfs_chdir (pid_t pid, message_t *msg)
 {
   message_t resp;
   u16_t len = msg->body.chdir.len;
 	
-  if (! len) {
+  K_PRINTF(3, "vfs: PID-%i CHDIR: %Xh (%u)\n", pid, (mem_va_t)msg->body.chdir.path, len);
+
+  if ((! len) || (len > K_MAX_DIRNAME_LEN)) {
+    K_PRINTF(3, "vfs: PID-%i CHDIR: EINVAL\n", pid);
     resp.body.s32 = -EINVAL;
-    goto vfs_chdir_exit;
+    goto _vfs_chdir_exit;
   }
   
-  mem_pa_t path = va_to_pa(from, (mem_va_t)msg->body.chdir.path, len);
+  char *path = (char *)va_to_pa(pid, (mem_va_t)msg->body.chdir.path, len);
 
   if (! path) {
     // bad address
-    K_PRINTF(2, "VFS: chdir: bad address %Xh\n", (u32_t)msg->body.chdir.path);
+    K_PRINTF(3, "vfs: PID-%i CHDIR: EFAULT\n", pid);
     resp.body.s32 = -EFAULT;
-    goto vfs_chdir_exit;
+    goto _vfs_chdir_exit;
   }
     
-  char *s = (char *)path;
-  len = strnlen(s, len);
-
-  static char fullname[K_MAX_DIRNAME_LEN+K_MAX_DIRNAME_LEN+2];
-  u16_t clen;
-
-  if (s[0] == '/') {
-    // absolute path
-    clen = 0;
-  } else {
-    // relative path
-    clen = strlen(_vfs_proc_table[from].cdir);
-    strcpy(fullname, _vfs_proc_table[from].cdir);
-    fullname[clen++] = '/';
-  }
-
-  if (s[len] == 0 && (len+clen) < K_MAX_DIRNAME_LEN) {
-    // a valid null terminated string
-    strcpy(fullname+clen, s);
-	    
-    // try to open it
-    int fd = _open(from, fullname, O_DIRECTORY);
-    
-    K_PRINTF(2, "VFS: chdir: try %s\n", fullname);
-    
-    if (fd >= 0) {
-      // good !
-      _close(from, fd);
-      
-      strcpy(_vfs_proc_table[from].cdir, fullname);
-      
-      resp.body.s32 = 0;
-    } else {
-      K_PRINTF(2, "VFS: chdir: no dir %s\n", s);
-      resp.body.s32 = -ENOTDIR;
-    }
-  } else {
-    K_PRINTF(2, "VFS: chdir: bad string (len=%i)\n", len);
+  if (path[len]) {
+    K_PRINTF(3, "vfs: PID-%i CHDIR: EINVAL\n", pid);
     resp.body.s32 = -EINVAL;
-  }
-
- vfs_chdir_exit:
-  send(from, &resp);
-}
-
-static void _vfs_getcwd (pid_t from, message_t *msg)
-{
-  message_t resp;
-  u16_t size = msg->body.getcwd.size;
-  
-  mem_pa_t buf = va_to_pa(from, (mem_va_t)msg->body.getcwd.buf, size);
-  
-  if (! buf) {
-    resp.body.s32 = -EFAULT;
-  } else if (size > strlen(_vfs_proc_table[from].cdir)) {
-    strcpy((char *)buf, _vfs_proc_table[from].cdir);
-    resp.body.s32 = 0;
-  } else {
-    resp.body.s32 = -ERANGE;
+    goto _vfs_chdir_exit;
   }
   
-  send(from, &resp);
+  struct vnode *pvn;
+  resp.body.s32 = _lookuppn(path, &pvn, pid);
+
+  if (resp.body.s32) {
+    K_PRINTF(3, "vfs: PID-%i CHDIR: %u\n", pid, resp.body.s32);
+    goto _vfs_chdir_exit;
+  }
+    
+  if (pvn->v_type != VDIR) {
+    K_PRINTF(3, "vfs: PID-%i CHDIR: ENOTDIR\n", pid);
+    resp.body.s32 = -ENOTDIR;
+    VN_RELE(pvn);
+    goto _vfs_chdir_exit;
+  }
+
+  K_PRINTF(3, "vfs: PID-%i CHDIR: %s\n", pid, path);
+  _vfs_proc_table[pid].cdir = pvn;
+
+ _vfs_chdir_exit:
+  send(pid, &resp);
 }
 
 static void _vfs_mkdir (pid_t pid, message_t *msg)
 {
   message_t resp;
   mkdir_msg_body_t *msg_mkdir = &msg->body.mkdir;
+  int16_t len = msg_mkdir->len;
 
-  // check with extra byte for terminating null char
-  mem_pa_t pathname = va_to_pa(pid, (mem_va_t)msg_mkdir->path, msg_mkdir->len+1);
+  K_PRINTF(3, "vfs: PID-%i MKDIR: %Xh\n", pid, (mem_va_t)msg_mkdir->path);
 
-  if (! pathname) {
+  if (! len) {
+    K_PRINTF(3, "vfs: PID-%i MKDIR: ENOENT\n", pid);
+    resp.body.s32 = -ENOENT;
+    goto _vfs_mkdir_exit;
+  }
+  
+  char *pa_path = (char *)va_to_pa(pid, (mem_va_t)msg_mkdir->path, msg_mkdir->len+1);
+
+  if (! pa_path) {
+    K_PRINTF(3, "vfs: PID-%i MKDIR: EFAULT\n", pid);
     resp.body.s32 = -EFAULT;
-    goto vfs_mkdir_exit;
+    goto _vfs_mkdir_exit;
   }
 
-  if (((char *)pathname)[msg_mkdir->len]) {
-    // must terminate with a null char
+  if (pa_path[len]) {
+    // must be not empty and terminate with a null char
     resp.body.s32 = -EINVAL;
-    goto vfs_mkdir_exit;
-  }
-  
-  u32_t mnt;
-  struct _vfs_mount_t *pmnt = 0;
-  
-  // find mount point this file belongs to
-  for (mnt = 0; mnt < K_MOUNT_COUNT; mnt++) {
-    if (_vfs_mounts[mnt].type &&
-	(strncmp(_vfs_mounts[mnt].path, (const char *)pathname, strlen(_vfs_mounts[mnt].path)) == 0)) {
-      pmnt = &_vfs_mounts[mnt];
-    }    
+    goto _vfs_mkdir_exit;
   }
 
-  if (pmnt == 0) {
-    resp.body.s32 = -ENOENT;  // no match
-    goto vfs_mkdir_exit;
+  // remove tailing /
+  while (len && (pa_path[len] == '/')) len--;
+
+  if (! len) {
+    K_PRINTF(3, "vfs: PID-%i MKDIR: ENOENT\n", pid);
+    resp.body.s32 = -ENOENT;
+    goto _vfs_mkdir_exit;
   }
+    
+  // split full path in path + name to create
+  while (len && (pa_path[len] != '/')) len--;
+
+  char *basename = &pa_path[len+1];
+
+  // not very clean to alterate user's memory space but avoids a copy
+  char bak = pa_path[len];
+  pa_path[len] = 0;
   
-  resp.body.s32 = pmnt->ops->mkdir(&pmnt->ctx, (const char *)pathname + strlen(pmnt->path), msg_mkdir->flags);
+  struct vnode *pvn;
+  resp.body.s32 = _lookuppn(pa_path, &pvn, pid);
 
-  K_PRINTF(3, "vfs: mkdir %s by %u\n", pathname, pid);
+  pa_path[len] = bak;
 
- vfs_mkdir_exit:
+  if (resp.body.s32) {
+    K_PRINTF(3, "vfs: PID-%i MKDIR: %i\n", pid, resp.body.s32);
+    goto _vfs_mkdir_exit;
+  }
+    
+  if (pvn->v_type != VDIR) {
+    K_PRINTF(3, "vfs: PID-%i MKDIR: ENOTDIR\n", pid);
+    VN_RELE(pvn);
+    resp.body.s32 = -ENOTDIR;
+    goto _vfs_mkdir_exit;
+  }
+   
+  resp.body.s32 = pvn->v_op->vn_mkdir(pvn, basename, pid);
+
+  VN_RELE(pvn);
+
+  if (resp.body.s32) {
+    K_PRINTF(3, "vfs: PID-%i MKDIR: v_op->mkdir %i\n", pid, resp.body.s32);
+    goto _vfs_mkdir_exit;
+  }
+
+  // success
+  K_PRINTF(3, "vfs: PID-%i MKDIR: %s\n", pid, basename);
+  
+ _vfs_mkdir_exit:
   send(pid, &resp);
 }
 
-static void _vfs_fork (pid_t from, message_t *msg)
+static void _vfs_fork (pid_t pid, message_t *msg)
 {
   message_t resp;
 
   /* allowed for kernel tasks only */
-  if (proc_get_uid(from) == PROC_UID_KERNEL) {
+  if (proc_get_uid(pid) == PROC_UID_KERNEL) {
     pid_t ppid = msg->body.vfs_fork.parent;
     pid_t child = msg->body.vfs_fork.child;
     
@@ -739,15 +800,35 @@ static void _vfs_fork (pid_t from, message_t *msg)
     int fd;
 
     for (fd = 0; fd < K_PROC_FD_COUNT; fd++) {
-      struct _vfs_vnode_t *pfd = _vfs_proc_table[ppid].fd_table[fd];
-      
-      if (pfd) {
-	pfd->count++;
-      }
+      struct vnode *pvn = _vfs_proc_table[ppid].fd_table[fd];
+
+      VN_HOLD(pvn);
     }
     
     /* acknowledge (no argument) */
-    send(from, &resp);
+    send(pid, &resp);
   }
   // TODO : else
+}
+
+// vnodes allocation
+struct vnode *vfs_vnode_alloc()
+{
+  struct vnode *pvn = _vfs_free_vnode_list;
+
+  if (pvn) {
+    // remove from free list
+    _vfs_free_vnode_list = pvn->next;
+  }
+
+  // get alone
+  pvn->next = _K_VNODE_NULL;
+  
+  return pvn;
+}
+
+void vfs_vnode_free(struct vnode *pvn)
+{
+  pvn->next = _vfs_free_vnode_list;
+  _vfs_free_vnode_list = pvn;
 }

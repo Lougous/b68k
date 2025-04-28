@@ -16,7 +16,10 @@
 #define EISDIR		21	/* Is a directory */
 #define EINVAL		22      /* Invalid argument */
 #define ENFILE		23      /* File table overflow */
+#define EMFILE          24      /* too many open files */
+#define ENOTTY          25      /* inappropriate I/O control operation */
 #define EROFS           30	/* Read-only file system */
 #define ERANGE          34      /* Result too large */
+#define ENAMETOOLONG    36      /* file name too long */
 
 #endif // _errno_h_

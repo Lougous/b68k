@@ -59,12 +59,14 @@
 #define K_DEV_COUNT   12
 
 /* file system */
-#define K_MOUNT_COUNT        8
-#define K_VNODE_COUNT        16
-#define K_PROC_FD_COUNT      16
-#define K_MAX_FILENAME_LEN   64
-#define K_MAX_DIRNAME_LEN    128
-#define K_MAX_DIRENT_LEN     128   /* max length for dirent syscalls */
-#define K_MAX_READWRITE_LEN  512   /* max length for read/write syscalls */
+#define K_VFS_COUNT            8
+#define K_MAX_VFS_PRIVATE_LEN  12     // max size for VFS private data (struct vfs . vfs_data)
+#define K_VNODE_COUNT          16
+#define K_MAX_VN_PRIVATE_LEN   16    // max size for vnode private data (struct vnode . v_data)
+#define K_PROC_FD_COUNT        16
+#define K_MAX_FILENAME_LEN     64
+#define K_MAX_DIRNAME_LEN      128
+#define K_MAX_DIRENT_LEN       128   /* max length for dirent syscalls */
+#define K_MAX_READWRITE_LEN    512   /* max length for read/write syscalls */
 
 #endif /* _config_h_ */

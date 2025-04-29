@@ -2,6 +2,8 @@
 #include "types.h"
 #include "b68k.h"
 
+#include <sys/rfs.h>
+
 extern void outs(char *msg);
 extern void outx(unsigned int x, int to_pad);
 
@@ -9,6 +11,11 @@ extern void outx(unsigned int x, int to_pad);
 // send/receive data through serial on multi-IO board
 ////////////////////////////////////////////////////////////////////////////////
 
+// FS data
+rnode_t _root;
+
+// file data
+rnode_t _rnode;
 u32_t _size;
 u32_t _lseek;
 
@@ -60,43 +67,30 @@ static u8_t _check_msg(u8_t *msg)
 
   return 1;
 }
-  
-u8_t _buf[256];
+
 
 int rfs_init(void)
 {
   outs("rfs: probing connection ...\n");
   
   // send reset command
-  _buf[0] = 0x55;
-  _buf[1] = 1;  // len
-  _buf[2] = 'I';
-  _buf[3] = 'I';  // checksum
-  _buf[4] = 0xAA;
-
-  _send(_buf, 5);
+  rfs_creset_t creset = RFS_CRESET();
+  _send((u8_t *)&creset, sizeof(creset));
 
   // get reset command return
-  _receive(_buf, 5);
+  rfs_areset_t areset;
+  _receive((u8_t *)&areset, sizeof(areset));
   
-  if (_check_msg(_buf)) {
-    outs("rfs: connected\n");
+  if (_check_msg((u8_t *)&areset)) {
+    _root = RFS_ARESET_ROOT(areset);
+    outs("rfs: connected, root rnode ");
+    outx(_root, 0);
+    outs("h\n");
     return 0;
   } else {
     outs("rfs: failed to connect\n");
     return -1;
   }
-}
-
-static u8_t _sum_name(u8_t *name)
-{
-  u8_t sum = 0;
-
-  while (*name) {
-    sum += *name++;
-  }
-
-  return sum;
 }
 
 char *_strcpy(char *dest, const char *src) {
@@ -113,117 +107,100 @@ char *_strcpy(char *dest, const char *src) {
 }
 
 #define _FLAGS 1  // RDONLY
+#define _PID   0
 
-int rfs_open(const char *pathname, u8_t len)
+u32_t _size;
+u32_t _lseek;
+
+int rfs_open(const char *pathname)
 {
-  outs("rfs: opening ");
+  // lookup
+  outs("rfs: lookup ");
   outs((char *)pathname);
-  outs(" ...\n");
-  
-  // send open command
-  _buf[0] = 0x55;
-  _buf[1] = 2 + len;      // len
-  _buf[2] = 'O';          // open command
-  _buf[3] = _FLAGS;       // flags
-  (void)_strcpy((char *)&_buf[4], pathname);
-  _buf[4+len] = 'O' + _FLAGS + _sum_name((u8_t *)pathname);  // checksum
-  _buf[5+len] = 0xAA;
-  
-  _send(_buf, 6+len);
+  outs("\n");
 
-  // get open command return
-  _receive(_buf, 10);
+  rfs_clookup_t clookup = RFS_CLOOKUP(_root, _PID, pathname);
+  _strcpy(RFS_CLOOKUP_NAME(clookup), pathname);
+  _send((u8_t *)&clookup, sizeof(clookup));
 
-  // answer
-  // 0: 55h
-  // 1: len=6 
-  // 2: status 1=OK
-  // 3: fd (if OK)
-  // 4: file size (LSB)
-  // 5: file size
-  // 6: file size
-  // 7: file size (MSB)
-  // 8: checksum
-  // 9: AAh
-  if (_check_msg(_buf) && _buf[2] == 1) {
-    int fd = _buf[3];
-    _size = 
-      ((u32_t)_buf[4]) +
-      (((u32_t)_buf[5]) << 8) +
-      (((u32_t)_buf[6]) << 16) +
-      (((u32_t)_buf[7]) << 24);
-    _lseek = 0;
+  // lookup answer
+  rfs_alookup_t alookup;
+  _receive((u8_t *)&alookup, sizeof(alookup));
+
+  if (!_check_msg((u8_t *)&alookup)) {
+    outs("rfs: error: invalid message\n");
+    return -1;
+  }  
+
+  _rnode = RFS_ALOOKUP_RNODE(alookup);
+
+  if (!_rnode) {
+    outs("rfs: error: file not found\n");
+    return -1;
+  }  
     
-    outs("rfs: OK, size ");
-    outx(_size, 0);
-    outs("h\n");
-   
-    return fd;
-  }
+  outs("rfs: rnode ");
+  outx(_rnode, 0);
+  outs("h\n");
+
+  // open
+  outs("rfs: open file\n");
   
-  /* couldn't open file */
-  outs("rfs: failed to open\n");
+  rfs_copen_t copen = RFS_COPEN(_rnode, _FLAGS, _PID);
+  _send((u8_t *)&copen, sizeof(copen));
 
-  return -1;  
-}
+  // open answer
+  rfs_aopen_t aopen;
+  _receive((u8_t *)&aopen, sizeof(aopen));
 
-static u8_t _sum(u8_t *buf, u16_t len)
-{
-  u8_t sum = 0;
+  if (!_check_msg((u8_t *)&aopen)) {
+    outs("rfs: error: invalid message\n");
+    return -1;
+  }  
 
-  while (len--) {
-    sum += *buf++;
+  if (RFS_AOPEN_STATUS(aopen) != 1) {
+    outs("rfs: error: bad status\n");
+    return -1;
   }
 
-  return sum;
+  _size = RFS_AOPEN_SIZE(aopen);
+  _lseek = 0;
+  
+  outs("rfs: OK, size ");
+  outx(_size, 0);
+  outs("h\n");
+  
+  return 1;  
 }
 
-u32_t rfs_read(int fd, void *buf, u32_t count)
+u32_t rfs_read(void *buf, u32_t count)
 {
   u8_t *dst = (u8_t *)buf;
   u32_t done = 0;
 
-  outs("rfs: reading ...\n");
+  outs("rfs: reading file\n");
 
   while (done < count) {
     u8_t len = (count - done) > 64 ? 64 : count - done;
     
     // send read command
-    _buf[0] = 0x55;
-    _buf[1] = 7;
-    _buf[2] = 'R';
-    _buf[3] = (u8_t)fd;
-    _buf[4] = len;
-    _buf[5] = (unsigned char)(_lseek & 0xff);
-    _buf[6] = (unsigned char)((_lseek >> 8) & 0xff);
-    _buf[7] = (unsigned char)((_lseek >> 16) & 0xff);
-    _buf[8] = (unsigned char)((_lseek >> 24) & 0xff);
-    _buf[9] = _sum(_buf + 2, 7);  // checksum
-    _buf[10] = 0xAA;
-  
-    _send(_buf, 11);
-
-    // get open command return
-    _receive(_buf, 5+len);
-
-    // answer
-    // 0: 55h
-    // 1: len
-    // 2: actually used length in buffer, 0xFF if access failed
-    // 3+: buf[count]
-    // : checksum
-    // : AAh
-
-    char blen = _buf[2];
+    rfs_cread_t cread = RFS_CREAD(len, _rnode, _lseek);
+    _send((u8_t *)&cread, sizeof(cread));
     
-    if (_check_msg(_buf) && blen >= 0) {
+    // get read command return
+    u8_t _buf[RFS_AREAD_LEN_NO_DATA+64];
+    _receive(_buf, RFS_AREAD_LEN_NO_DATA+len);
+
+    u8_t blen = RFS_AREAD_BLEN(buf);
+    
+    if (_check_msg(buf) && blen >= 0) {
       // valid frame
       if (blen == 0) {
 	// end of file
 	break;
       }
       
-      u8_t *src = &_buf[3];
+      u8_t *src = RFS_AREAD_BUF(buf);
 
       _lseek += blen;
       
@@ -232,7 +209,7 @@ u32_t rfs_read(int fd, void *buf, u32_t count)
 	done++;
       }
     } else {
-      outs("rfs: warning: bad frame\n");
+      outs("rfs: warning: bad frame, aborting\n");
       break;
     }
   }

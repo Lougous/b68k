@@ -14,12 +14,15 @@
 #include <fcntl.h>
 #include <sys/wait.h>
 #include <signal.h>
+#include <limits.h>
 
 #define BUFLEN    128
 #define MAX_ARGS  8
 
 char line[BUFLEN];
 char *c_args[MAX_ARGS];
+
+char cpath[PATH_MAX+1];
 
 void cut_words (char *cline)
 {
@@ -52,12 +55,18 @@ void cut_words (char *cline)
   c_args[argc] = 0;   
 }
 
+char *_symplify_path(char *path)
+{
+  // TODO
+  return path;
+}
+
 int main (int argc, char *argv[])
 {
 
   while (1) {
     // TODO: use PS1 environment variable
-    printf("$ ");
+    printf("# ");
 
     // get a line
     {
@@ -71,12 +80,20 @@ int main (int argc, char *argv[])
 
 	if (n) {
 	  if (*pc == '\n') {
+	    // line return
 	    *pc = 0;
 	    break;
+	  } else if (*pc == 8) {
+	    // backspace
+	    if (len) {
+	      len--;
+	      pc--;
+	    }
+	    continue;
 	  } else if (*pc == 0) {
 	    break;
 	  }
-	  
+
 	  pc++;
 	  len++;  // TODO: buffer overflow !
 	}
@@ -91,15 +108,23 @@ int main (int argc, char *argv[])
       if (strcmp(c_args[0], "exit") == 0) break;
 
       if (strcmp(c_args[0], "cd") == 0) {
-	char *path = c_args[1] ? c_args[1] : "/";  // TODO use HOME 
+	char *path = c_args[1] ? _symplify_path(c_args[1]) : "/";  // TODO use $HOME
 	
 	if (chdir(path) < 0) {
 	  printf("sh: cd: %s: No such directory\n", path);
+	} else {
+	  strncpy(cpath, path, PATH_MAX);
+	  cpath[PATH_MAX] = 0;
 	}
 
 	continue;
       }
 
+      else if (strcmp(c_args[0], "pwd") == 0) {
+	printf("%s\n", cpath);  // TODO use $PWD
+	continue;
+      }
+	
       // external commands
       int fd = open(c_args[0], O_RDONLY);
 

@@ -21,7 +21,7 @@ LDLIBS=-lc -lgcc
 OBJCOPY=${XCROOT}objcopy
 OBJDUMP=${XCROOT}objdump
 
-BIN=ls sh cat pwd init
+BIN=ls sh cat init
 
 # entries
 all:	libc crt0.o ${BIN}
@@ -33,7 +33,6 @@ libc:
 ls:	ls.o
 sh:	sh.o
 cat:	cat.o
-pwd:	pwd.o
 init:	init.o 
 
 clean:

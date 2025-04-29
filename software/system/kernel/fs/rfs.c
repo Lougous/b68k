@@ -27,8 +27,6 @@
 #include "sys/rfs.h"
 
 // private data for struct vfs (.vfs_data)
-typedef u32_t rnode_t;
-
 struct rfs {
   // device
   dev_t *dev;

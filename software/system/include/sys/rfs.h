@@ -8,6 +8,8 @@
 #ifndef _rfs_h_
 #define _rfs_h_
 
+typedef u32_t rnode_t;
+
 ////////////////////////////////////////////////////////////////////////////////
 // configuration
 ////////////////////////////////////////////////////////////////////////////////
@@ -101,6 +103,8 @@ typedef u8_t rfs_cread_t[14];
       [13] = 0xAA }
 
 // u8_t head; u8_t len; u8_t cid; u8_t blen; u8_t buf[blen]; u8_t csum; u8_t tail;
+#define RFS_AREAD_LEN_NO_DATA  6
+
 #define RFS_AREAD_BLEN(buf) ((u8_t *)(buf))[3]
 #define RFS_AREAD_BUF(buf) &(((u8_t *)(buf))[4])
 

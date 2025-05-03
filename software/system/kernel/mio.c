@@ -575,7 +575,7 @@ static size_t _read (dev_read_msg_body_t *body)
     u32_t st = clock_now();
     
     while (count) {
-      while (_serial.rptr != _serial.wptr) {
+      while (_serial.rptr != _serial.wptr && count) {
 	*dst++ = _serial.rbin[_serial.rptr++];
 	done++;
 	count--;

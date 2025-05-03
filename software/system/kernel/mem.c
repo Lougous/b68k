@@ -23,7 +23,7 @@
 // reserved block for system
 // shall match with MEMORY section of linker script
 // user process virtual address starts just after these block
-#define _K_MEM_RSVD_BLOCKS      48    // 64kiB code + 128kiB data
+#define _K_MEM_RSVD_BLOCKS      64    // 128kiB code + 128kiB data
 
 /* blocks status */
 pid_t _blk_sts[K_MEM_BLOCK_COUNT - _K_MEM_RSVD_BLOCKS];

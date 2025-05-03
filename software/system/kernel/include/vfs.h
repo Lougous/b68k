@@ -88,11 +88,13 @@ struct vnodeops {
 
 inline void VN_HOLD(struct vnode *pvn)
 {
+  K_PRINTF(3, "     VN_HOLD %Xh %u\n", pvn, pvn->v_count);
   pvn->v_count++;
 }
 
 inline void VN_RELE(struct vnode *pvn)
 {
+  K_PRINTF(3, "     VN_RELE %Xh %u\n", pvn, pvn->v_count);
   if (pvn->v_count) pvn->v_count--;
 
   if (! pvn->v_count) pvn->v_op->vn_inactive(pvn);

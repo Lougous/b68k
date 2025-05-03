@@ -21,13 +21,13 @@
 #include <string.h>
 
 #include "config.h"
+#include "debug.h"
 #include "mem.h"
 #include "proc.h"
 #include "dev.h"
 #include "vfs.h"
 #include "msg.h"
 #include "lock.h"
-#include "debug.h"
 
 // mount points
 struct vfs _vfs_vfs_table[K_VFS_COUNT];
@@ -189,11 +189,23 @@ char *_trim_slash(char *str)
 
   return str;
 }
+
+// len of first path element in name
+u16_t _subpathlen (char *path)
+{
+  char *at = path;
+
+  while (*at && *at != '/') at++;
+
+  return (u16_t)(at - path);
+}
   
 int _lookuppn (char *nm, struct vnode **ppv, pid_t pid)
 {
   struct vnode *pvn;
   int ret;
+
+  K_PRINTF(3, "vfs: PID-%d: vn_lookup: %s\n", pid, nm);
   
   if (nm[0] == '/') {
     // absolute path
@@ -215,25 +227,36 @@ int _lookuppn (char *nm, struct vnode **ppv, pid_t pid)
   }
 
   VN_HOLD(pvn);
+  *ppv = pvn;
 
   while (*nm) {
-    K_PRINTF(3, "vfs: %d: vn_lookup: %s\n", pid, nm);
+    K_PRINTF(3, "vfs: PID-%d: vn_lookup: %s\n", pid, nm);
     struct vfs *mounted = pvn->v_vfsmountedhere;
 
     if (mounted) {
-      K_PRINTF(3, "vfs: %d: vn_lookup: change VFS\n", pid);
+      K_PRINTF(3, "vfs: PID-%d: vn_lookup: change VFS to %Xh\n", pid, mounted);
+      K_PRINTF(3, "vfs: PID-%d: vn_lookup: vfs_root %Xh\n", pid, (u32_t)mounted->vfs_op->vfs_root);
       (void)mounted->vfs_op->vfs_root(mounted, ppv);
       VN_RELE(pvn);
       pvn = *ppv;
     }
+
+    // split first path element
+    u16_t elen = _subpathlen(nm);
+    char cbak = nm[elen];
+    nm[elen] = 0;
     
+    K_PRINTF(3, "vfs:   path elem: %s\n", nm);
     ret = pvn->v_op->vn_lookup(pvn, nm, ppv, pid);
     VN_RELE(pvn);
     pvn = *ppv;
 
+    nm[elen] = cbak;
+    
     if (ret) return ret;
 
     // next in name tree
+    nm += elen;
     nm = _trim_slash(nm);
   }
 
@@ -241,7 +264,8 @@ int _lookuppn (char *nm, struct vnode **ppv, pid_t pid)
   struct vfs *mounted = pvn->v_vfsmountedhere;
 
   if (mounted) {
-    K_PRINTF(3, "vfs: %d: vn_lookup: change VFS\n", pid);
+    K_PRINTF(3, "vfs: PID-%d: vn_lookup: change VFS to %Xh\n", pid, mounted);
+    K_PRINTF(3, "vfs: PID-%d: vn_lookup: vfs_root %Xh\n", pid, (u32_t)mounted->vfs_op->vfs_root);
     (void)mounted->vfs_op->vfs_root(mounted, ppv);
     VN_RELE(pvn);
   }
@@ -358,7 +382,7 @@ static void _vfs_mount (pid_t pid, message_t *msg)
   pvfs->vfs_next = _vfs_used_vfs_list;
   _vfs_used_vfs_list = pvfs;
 
-  K_PRINTF(3, "vfs: mounted %s at %s (%)\n", dev, path_to, type);
+  K_PRINTF(3, "vfs: mounted %s at %s %Xh (%s)\n", dev, path_to, pvfs, type);
 
  _vfs_mount_exit:
   send(pid, &resp);
@@ -398,17 +422,13 @@ static struct vnode *_vfs_vnode_from_fd(pid_t pid, unsigned int fd)
   return _K_VNODE_NULL;
 }
 
-
-
 static void _vfs_open (pid_t pid, message_t *msg)
 {
   message_t resp;
-  //K_PRINTF(2, "vfs: OPEN: %Xh\n", (mem_va_t)msg.body.open.pathname);
-	
   int16_t len = msg->body.open.len;
   mem_pa_t pathname = va_to_pa(pid, (mem_va_t)msg->body.open.pathname, len);
 
-  K_PRINTF(3, "vfs: PID-%i OPEN: %Xh\n", pid, (mem_va_t)msg->body.open.pathname);
+  K_PRINTF(3, "vfs: PID-%i OPEN: %s\n", pid, pathname);
 
   if (! len) {
     K_PRINTF(3, "vfs: PID-%i OPEN: ENOENT\n", pid);
@@ -459,7 +479,8 @@ static void _vfs_open (pid_t pid, message_t *msg)
   // success
   _vfs_proc_table[pid].fd_table[fd] = pvn;
   
-  K_PRINTF(3, "vfs: PID-%i OPEN: %s\n", pid, (char *)path);
+  K_PRINTF(3, "vfs: PID-%i OPEN: pid %i, node %Xh\n", pid, fd, pvn);
+  resp.body.s32 = fd;
 
  _vfs_open_exit:
   send(pid, &resp);
@@ -468,6 +489,8 @@ static void _vfs_open (pid_t pid, message_t *msg)
 static void _vfs_getdents (pid_t pid, message_t *msg)
 {
   message_t resp;
+
+  K_PRINTF(3, "vfs: PID-%i GETDENTS: fd %i\n", pid, msg->body.getdents.fd);
 
   /* limit buffer size to limit service duration */
   unsigned int count = msg->body.getdents.count;
@@ -482,6 +505,8 @@ static void _vfs_getdents (pid_t pid, message_t *msg)
 
   struct vnode *pvn = _vfs_vnode_from_fd(pid, msg->body.getdents.fd);
 
+  K_PRINTF(3, "vfs: PID-%i GETDENTS: node %Xh\n", pid, (u32_t)pvn);
+
   if (! pvn) {
     resp.body.s32 = -EBADF;
     goto _vfs_getdents_exit;
@@ -495,6 +520,8 @@ static void _vfs_getdents (pid_t pid, message_t *msg)
   // TODO: check directory is open
 
   resp.body.s32 = pvn->v_op->vn_getdents(pvn, (char *)buf, count);
+
+  K_PRINTF(3, "vfs: PID-%i GETDENTS: %i\n", pid, resp.body.s32);
 
  _vfs_getdents_exit:
   send(pid, &resp);
@@ -520,6 +547,8 @@ static void _vfs_close (pid_t pid, message_t *msg)
   // TODO: flush/sync ?
   struct vnode *pvn = _vfs_vnode_from_fd(pid, fd);
 
+  K_PRINTF(3, "vfs: PID-%i CLOSE fd %i, node %Xh\n", pid, fd, (u32_t)pvn);
+
   if (! pvn) {
     resp.body.s32 = -EBADF;
     goto _vfs_close_exit;
@@ -538,6 +567,8 @@ static void _vfs_kill (pid_t pid, message_t *msg)
 {
   message_t resp;
   
+  K_PRINTF(3, "vfs: PID-%i KILL PID %i\n", pid, msg->body.u32);
+
   // allowed for kernel tasks only: actual user kill syscall is to send through system task
   if (proc_get_uid(pid) == PROC_UID_KERNEL) {
     pid_t pid = msg->body.u32;
@@ -574,21 +605,28 @@ static void _vfs_read (pid_t pid, message_t *msg)
   count = count > K_MAX_READWRITE_LEN ? K_MAX_READWRITE_LEN : count;
   
   mem_pa_t buf = va_to_pa(pid, (mem_va_t)msg->body.read.buf, count);
+  int fd = msg->body.read.fd;
   
   if (buf) {
-    struct vnode *pvn = _vfs_vnode_from_fd(pid, msg->body.read.fd);
+    struct vnode *pvn = _vfs_vnode_from_fd(pid, fd);
+
+    //if (fd || !pid) K_PRINTF(3, "vfs: PID-%i READ: fd %i, node %Xh, count %u\n", pid, fd, (u32_t)pvn, count);
 
     if (pvn) {
       if (pvn->v_type == VDIR) {
+	K_PRINTF(3, "vfs: PID-%i READ: EISDIR\n", pid);
 	resp.body.s32 = -EISDIR;
       } else {
 	resp.body.s32 = pvn->v_op->vn_read(pvn, (char *)buf, count, pid);
+	//if (fd || !pid) K_PRINTF(3, "vfs: PID-%i READ: %u bytes\n", pid, resp.body.s32);
       }
     } else {
+      K_PRINTF(3, "vfs: PID-%i READ: EBADF\n", pid);
       resp.body.s32 = -EBADF;
     }
   
   } else {
+    K_PRINTF(3, "vfs: PID-%i READ: EACCESS\n", pid);
     resp.body.s32 = -EACCESS;
   }
   
@@ -604,9 +642,10 @@ static void _vfs_write (pid_t pid, message_t *msg)
   count = count > K_MAX_READWRITE_LEN ? K_MAX_READWRITE_LEN : count;
 	
   mem_pa_t buf = va_to_pa(pid, (mem_va_t)msg->body.write.buf, count);
+  int fd = msg->body.write.fd;
 
   if (buf) {
-    struct vnode *pvn = _vfs_vnode_from_fd(pid, msg->body.write.fd);
+    struct vnode *pvn = _vfs_vnode_from_fd(pid, fd);
 
     if (pvn) {
       if (pvn->v_type == VDIR) {
@@ -725,34 +764,47 @@ static void _vfs_mkdir (pid_t pid, message_t *msg)
     goto _vfs_mkdir_exit;
   }
 
-  if (pa_path[len]) {
-    // must be not empty and terminate with a null char
-    resp.body.s32 = -EINVAL;
-    goto _vfs_mkdir_exit;
-  }
+  int16_t ptr = len;
+  
+  // remove tailing /s
+  while (ptr && (pa_path[ptr-1] == '/')) ptr--;
 
-  // remove tailing /
-  while (len && (pa_path[len] == '/')) len--;
-
-  if (! len) {
+  if (! ptr) {
+    // only /s in name
     K_PRINTF(3, "vfs: PID-%i MKDIR: ENOENT\n", pid);
     resp.body.s32 = -ENOENT;
     goto _vfs_mkdir_exit;
   }
     
-  // split full path in path + name to create
-  while (len && (pa_path[len] != '/')) len--;
-
-  char *basename = &pa_path[len+1];
-
   // not very clean to alterate user's memory space but avoids a copy
-  char bak = pa_path[len];
+  char bak_nxt = pa_path[len];
   pa_path[len] = 0;
-  
-  struct vnode *pvn;
-  resp.body.s32 = _lookuppn(pa_path, &pvn, pid);
 
-  pa_path[len] = bak;
+  // split full path in path + name to create
+  ptr = len - 1;
+  
+  while (ptr && (pa_path[ptr] != '/')) ptr--;
+
+  char *basename = pa_path + ptr;
+  
+  if (pa_path[ptr] == '/') {
+    basename++;
+  }
+
+  K_PRINTF(3, "vfs: PID-%I MKDIR: basename = %s\n", pid, basename);
+
+  struct vnode *pvn;
+
+  //if (ptr > 1) {
+    // not very clean to alterate user's memory space but avoids a copy
+    char bak = pa_path[len];
+    pa_path[len] = 0;
+
+    resp.body.s32 = _lookuppn(pa_path, &pvn, pid);
+
+    pa_path[len] = bak;
+    //} else {
+    //}
 
   if (resp.body.s32) {
     K_PRINTF(3, "vfs: PID-%i MKDIR: %i\n", pid, resp.body.s32);
@@ -794,7 +846,7 @@ static void _vfs_fork (pid_t pid, message_t *msg)
     /* copy links to file descriptors */
     memcpy((void *)&_vfs_proc_table[child], (void *)&_vfs_proc_table[ppid], sizeof(_vfs_proc_table[child]));
     
-    K_PRINTF(3, "vfs: FORK: %i:%s %i:%s\n", ppid, _vfs_proc_table[ppid].cdir, child, _vfs_proc_table[child].cdir);
+    K_PRINTF(3, "vfs: PID-%i FORK: %i to %i\n", pid, ppid, child);
 
     /* increment open counter */
     int fd;
@@ -802,7 +854,7 @@ static void _vfs_fork (pid_t pid, message_t *msg)
     for (fd = 0; fd < K_PROC_FD_COUNT; fd++) {
       struct vnode *pvn = _vfs_proc_table[ppid].fd_table[fd];
 
-      VN_HOLD(pvn);
+      if (pvn) VN_HOLD(pvn);
     }
     
     /* acknowledge (no argument) */

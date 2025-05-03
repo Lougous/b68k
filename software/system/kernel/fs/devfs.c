@@ -17,16 +17,18 @@
 #include <string.h>
 
 #include "config.h"
+#include "debug.h"
 #include "dev.h"
 #include "mem.h"
 #include "vfs.h"
 #include "msg.h"
-#include "debug.h"
 
 
 // private data for struct vfs (.vfs_data)
 struct devfs {
-  // list of vnodes - root is first
+  // root rnode
+  struct vnode *pvnroot;
+  // list of vnodes
   struct vnode *pvn;
 };
 
@@ -117,10 +119,10 @@ int devfs_mount (struct vfs *pvfs, dev_t *pdev)
     return -ENOMEM;
   }
 
-  pvn->v_count = 1;
   pvn->v_op    = &_devfs_vnodeops;
   pvn->v_vfsp  = pvfs;
   pvn->v_type  = VDIR;
+  VN_HOLD(pvn);
 
   struct devnode *pdn = (struct devnode *)&(pvn->v_data[0]);
 
@@ -131,6 +133,7 @@ int devfs_mount (struct vfs *pvfs, dev_t *pdev)
   // add vnode in list
   struct devfs *pdevfs = (struct devfs *)&(pvfs->vfs_data[0]);
   pdevfs->pvn = pvn;
+  pdevfs->pvnroot = pvn;
 
   return 0;
 }
@@ -144,7 +147,8 @@ static int _devfs_unmount (struct vfs *pvfs)
 static int _devfs_root (struct vfs *pvfs, struct vnode **ppv)
 {
   struct devfs *pdevfs = (struct devfs *)&(pvfs->vfs_data[0]);
-  *ppv = pdevfs->pvn;
+  *ppv = pdevfs->pvnroot;
+  VN_HOLD(*ppv);
   return 0;
 }
 
@@ -292,8 +296,11 @@ static off_t _vn_lseek(struct vnode *pvn, off_t offset, int whence)
 static int _vn_getdents (struct vnode *pvn, char *buf, unsigned int count)
 //int devfs_getdents(fs_file_context_t *ctx, struct dirent *dirp, unsigned int count)
 {
+  K_PRINTF(3, "devfs: getdents: node %Xh\n", pvn);
+  
   // lookup possible in root only
   if (pvn->v_type != VDIR) {
+    K_PRINTF(3, "devfs: getdents: error: ENOTDIR\n");
     return -ENOTDIR;
   }
 
@@ -315,10 +322,12 @@ static int _vn_getdents (struct vnode *pvn, char *buf, unsigned int count)
 
       pdn->lseek++;
 
+      K_PRINTF(3, "devfs: getdents: %s, %u\n", dirp->d_name, size);
       return size;
     }
   }
   
+  K_PRINTF(3, "devfs: getdents: end of directory\n");
   return 0;
 }
 
@@ -384,6 +393,13 @@ static int _vn_inactive (struct vnode *pvn)
   // first in list is root directory, it would be remove when unmounting
   //  so 1st vnode is not tested
   struct vnode *pvn_list = pdevfs->pvn;
+
+  if (pvn == pvn_list) {
+    // remove 1st
+    pdevfs->pvn = pvn->next;
+    vfs_vnode_free(pvn);
+    return 0;
+  }
 
   while (pvn_list) {
     if (pvn_list->next == pvn) {

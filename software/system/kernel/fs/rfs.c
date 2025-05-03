@@ -18,11 +18,11 @@
 #include <string.h>
 
 #include "config.h"
+#include "debug.h"
 #include "dev.h"
 #include "mem.h"
 #include "vfs.h"
 #include "msg.h"
-#include "debug.h"
 
 #include "sys/rfs.h"
 
@@ -49,13 +49,13 @@ struct rnode {
 // check struct rnode private data storage is enough for RFS - if not increase K_MAX_VN_PRIVATE_LEN
 extern char size_check_rnode[(signed)K_MAX_VN_PRIVATE_LEN-(signed)sizeof(struct rnode)];
 
-/*
+
 static void _dump_msg(u8_t *buf, int len) {
   int i;
   for (i = 0; i < len; i++) K_PRINTF(2, "%Xh ", buf[i]);
   K_PRINTF(2, "\n");
 }
-*/
+
 
 const struct vnodeops _rfs_vnodeops;
 
@@ -76,6 +76,47 @@ static u8_t _check_msg(u8_t *msg)
   if (*msg++ != 0xAA) return 0;
 
   return 1;
+}
+
+static u8_t _receive_msg(dev_t *pdev, u8_t *buf)
+{
+  message_t msg;
+  
+  msg.type = DEV_READ;
+  msg.body.dev_read.handle = pdev->handle;
+  msg.body.dev_read.dst = buf;
+  msg.body.dev_read.count = 2;
+  
+  sendreceive(pdev->drv, &msg, O_SEND | O_RECV);
+
+  if (msg.body.s32 != 2) return 0;
+  if (buf[0] != 0x55) return 0;
+  
+  u32_t len = buf[1];
+
+  if (len > (RFS_MAX_READ + 2)) return 0;
+  
+  msg.type = DEV_READ;
+  msg.body.dev_read.handle = pdev->handle;
+  msg.body.dev_read.dst = buf+2;
+  msg.body.dev_read.count = len + 2;
+
+  sendreceive(pdev->drv, &msg, O_SEND | O_RECV);
+
+  if (msg.body.s32 != (len + 2)) return 0;
+
+  return _check_msg(buf);
+}
+
+static u8_t _chksum(u8_t *msg, u8_t len)
+{
+  u8_t sum = 0;
+  
+  while (len--) {
+    sum += *msg++;
+  }
+
+  return sum;
 }
 
 
@@ -148,7 +189,7 @@ int rfs_mount (struct vfs *pvfs, dev_t *pdev)
   sendreceive(pdev->drv, &msg, O_SEND | O_RECV);
 
   // send reset command
-  rfs_creset_t creset = RFS_CRESET();
+  rfs_creset_t creset = { 0x55, 0x1, 'I', 'I', 0xAA };
   
   msg.type = DEV_WRITE;
   msg.body.dev_write.handle = pdev->handle;
@@ -158,15 +199,15 @@ int rfs_mount (struct vfs *pvfs, dev_t *pdev)
   sendreceive(pdev->drv, &msg, O_SEND | O_RECV);
 
   // get reset command return
-  rfs_areset_t areset;  
-  
+  rfs_areset_t areset;
+
   msg.type = DEV_READ;
   msg.body.dev_read.handle = pdev->handle;
   msg.body.dev_read.dst = areset;
   msg.body.dev_read.count = sizeof(areset);
   
   sendreceive(pdev->drv, &msg, O_SEND | O_RECV);
-
+  
   //_dump_msg(_buf, 5);
 
   if (msg.body.s32 == sizeof(areset) && _check_msg((u8_t *)&areset)) {
@@ -178,10 +219,10 @@ int rfs_mount (struct vfs *pvfs, dev_t *pdev)
     // initialize private data
     struct rfs *prfs = (struct rfs *)&(pvfs->vfs_data[0]);
     prfs->dev = pdev;
-    prfs->root = RFS_ARESET_ROOT(areset);
+    prfs->root = rfs_read_u32le(areset + 3);
     prfs->pvn = 0;
     
-    K_PRINTF(2, "rfs: connected; root is %u\n", prfs->root);
+    K_PRINTF(2, "rfs: connected; root is %Xh\n", prfs->root);
     return 0;
   } else {
     K_PRINTF(2, "rfs: failed to connect (%i)\n", msg.body.s32);
@@ -242,8 +283,16 @@ static int _rnode_open(struct vnode *pvn, int flags, pid_t pid)
   message_t msg;
 
   // send open command
-  rfs_copen_t copen = RFS_COPEN(prn->rnode, flags, pid);
-  
+  rfs_copen_t copen;
+  copen[0] = 0x55;
+  copen[1] = RFS_PAYLOAD_LEN(sizeof(rfs_copen_t));
+  copen[2] = 'O';
+  (void)rfs_u32le_at(copen + 3, prn->rnode);
+  copen[7] = flags;
+  copen[8] = pid;
+  copen[9] = _chksum(copen + 2, RFS_PAYLOAD_LEN(sizeof(rfs_copen_t)));
+  copen[10] = 0xAA;
+ 
   msg.type = DEV_WRITE;
   msg.body.dev_write.handle = pdev->handle;
   msg.body.dev_write.src = &copen;
@@ -261,22 +310,24 @@ static int _rnode_open(struct vnode *pvn, int flags, pid_t pid)
   
   sendreceive(pdev->drv, &msg, O_SEND | O_RECV);
  
-  if (msg.body.s32 == sizeof(aopen) && _check_msg((u8_t *)&aopen) && RFS_AOPEN_STATUS(aopen) == 1) {
+  if (msg.body.s32 == sizeof(aopen) && _check_msg((u8_t *)&aopen) && aopen[3] == 1) {
 
     prn->lseek = 0;
 
     if (flags != O_DIRECTORY) {
-      prn->FileSize = RFS_AOPEN_SIZE(aopen);
+      prn->FileSize = rfs_read_u32le(aopen + 4);
     } else {
       prn->FileSize = 0;
     }
     
-    K_PRINTF(3, "rfs: open rnode %u, %u bytes\n", prn->rnode, prn->FileSize);
+    K_PRINTF(3, "rfs: open rnode %Xh, %u bytes\n", prn->rnode, prn->FileSize);
 
     return 0;
   }
   
   /* couldn't open file */
+  K_PRINTF(3, "rfs: open failed\n");
+
   return -1;  
 }
 
@@ -291,36 +342,44 @@ static int _rnode_close(struct vnode *pvn, pid_t pid)
   message_t msg;
 
   // send close command
-  rfs_cclose_t cclose = RFS_CCLOSE(prn->rnode);
-    
+  rfs_cclose_t cclose;
+
+  cclose[0] = 0x55;
+  cclose[1] = RFS_PAYLOAD_LEN(sizeof(rfs_cclose_t));
+  cclose[2] = 'C';
+  (void)rfs_u32le_at(cclose + 3, prn->rnode);
+  cclose[7] = _chksum(cclose + 2, RFS_PAYLOAD_LEN(sizeof(rfs_cclose_t)));
+  cclose[8] = 0xAA;
+
   msg.type = DEV_WRITE;
   msg.body.dev_write.handle = pdev->handle;
-  msg.body.dev_write.src = &cclose;
+  msg.body.dev_write.src = cclose;
   msg.body.dev_write.count = sizeof(cclose);
  
   sendreceive(pdev->drv, &msg, O_SEND | O_RECV);
 
   // get open command return
-  rfs_cclose_t aclose;
+  rfs_aclose_t aclose;
   
   msg.type = DEV_READ;
   msg.body.dev_read.handle = pdev->handle;
-  msg.body.dev_read.dst = &aclose;
+  msg.body.dev_read.dst = aclose;
   msg.body.dev_read.count = sizeof(aclose);
   
   sendreceive(pdev->drv, &msg, O_SEND | O_RECV);
 
-  if (msg.body.s32 == sizeof(aclose) && _check_msg((u8_t *)&aclose)) {
-    if (RFS_ACLOSE_STATUS(aclose) == 1) {
-      K_PRINTF(3, "rfs: close rnode %u\n", prn->rnode);
+  if (msg.body.s32 == sizeof(aclose) && _check_msg(aclose)) {
+    if (aclose[3] == 1) {
+      K_PRINTF(3, "rfs: close rnode %Xh\n", prn->rnode);
 
       return 0;
     } else {
-      K_PRINTF(2, "rfs: error while closing rnode %u\n", prn->rnode);
+      K_PRINTF(2, "rfs: error while closing rnode %Xh\n", prn->rnode);
       return -1;  
     }
   } else {
-    K_PRINTF(2, "rfs: warning: bad frame\n");
+    K_PRINTF(2, "rfs: aclose: bad frame\n");
+    _dump_msg(aclose, sizeof(aclose)) ;
   }
   
   /* couldn't close file */
@@ -339,12 +398,26 @@ static size_t _rnode_read (struct vnode *pvn, void *buf, size_t count, pid_t pid
   u8_t *dst = (u8_t *)buf;
   size_t done = 0;
 
+  if ((prn->lseek + count) > prn->FileSize) {
+    // will stop at end of file
+    count = prn->FileSize - prn->lseek;
+  }
+
   while (done < count) {
     u8_t len = (count - done) > 64 ? 64 : count - done;
     
     // send read command
-    rfs_cread_t cread = RFS_CREAD(len, prn->rnode, prn->lseek);
-      
+    rfs_cread_t cread;
+
+    cread[0] = 0x55;
+    cread[1] = RFS_PAYLOAD_LEN(sizeof(rfs_cread_t));
+    cread[2] = 'R';
+    cread[3] = len;
+    (void)rfs_u32le_at(cread + 4, prn->rnode);
+    (void)rfs_u32le_at(cread + 8, prn->lseek);
+    cread[12] = _chksum(cread + 2, RFS_PAYLOAD_LEN(sizeof(rfs_cread_t)));
+    cread[13] = 0xAA;
+    
     msg.type = DEV_WRITE;
     msg.body.dev_write.handle = pdev->handle;
     msg.body.dev_write.src = &cread;
@@ -353,37 +426,34 @@ static size_t _rnode_read (struct vnode *pvn, void *buf, size_t count, pid_t pid
     sendreceive(pdev->drv, &msg, O_SEND | O_RECV);
 
     // get read command return
-    u8_t buf[64+6];
+    u8_t buf[RFS_MAX_READ+sizeof(rfs_aread_ko_t)];
 
-    msg.type = DEV_READ;
-    msg.body.dev_read.handle = pdev->handle;
-    msg.body.dev_read.dst = buf;
-    msg.body.dev_read.count = 6+len;
-  
-    sendreceive(pdev->drv, &msg, O_SEND | O_RECV);
-
-    //_dump_msg(_buf, 5+len);
-
-    u8_t blen = RFS_AREAD_BLEN(buf);
-    
-    if (msg.body.s32 == 6+len && _check_msg(buf) && blen >= 0) {
-      // valid frame
-      if (blen == 0) {
-	// end of file
-	break;
-      }
-      
-      u8_t *src = RFS_AREAD_BUF(buf);
-
-      prn->lseek += blen;
-      
-      while (blen--) {
-	*dst++ = *src++;
-	done++;
-      }
-    } else {
-      K_PRINTF(2, "rfs: warning: bad frame\n");
+    // header + CID + status
+    if (_receive_msg(pdev, buf) == 0) {
+      K_PRINTF(2, "rfs: aread: bad frame\n");
       break;
+    }
+      
+    if (buf[3] == RFS_AREAD_KO) {
+      // valid message but status KO
+      K_PRINTF(2, "rfs: warning: read KO\n");
+      break;
+    }
+   
+    u8_t blen = buf[1] - 2;  // - CID and status byte
+    
+    if (blen == 0) {
+      // end of file
+      break;
+    }
+      
+    u8_t *src = buf + 4;
+
+    prn->lseek += blen;
+    done += blen;
+      
+    while (blen--) {
+      *dst++ = *src++;
     }
   }
   
@@ -424,20 +494,21 @@ static int _rnode_getdents (struct vnode *pvn, char *buf, unsigned int count)
   struct rfs *prfs = (struct rfs *)&(pvfs->vfs_data[0]);
   struct rnode *prn = (struct rnode *)&(pvn->v_data[0]);
 
-  if (count > 64) {
-    K_PRINTF(2, "rfs: getdents: error: bad count\n");
-    return -1;
-  }
-  
   dev_t *pdev = prfs->dev;
 
   message_t msg;
 
   // send getdents command
-  rfs_cgetdents_t cgetdents = RFS_CGETDENTS(prn->rnode, prn->lseek++);
+  rfs_cgetdents_t cgetdents;
+  cgetdents[0] = 0x55;
+  cgetdents[1] = RFS_PAYLOAD_LEN(sizeof(rfs_cgetdents_t));
+  cgetdents[2] = 'D';
+  (void)rfs_u32le_at(cgetdents + 3, prn->rnode);
+  cgetdents[7] = prn->lseek++;
+  cgetdents[8] = _chksum(cgetdents + 2, RFS_PAYLOAD_LEN(sizeof(rfs_cgetdents_t)));
+  cgetdents[9] = 0xAA;
   
   msg.type = DEV_WRITE;
-
   msg.body.dev_write.handle = pdev->handle;
   msg.body.dev_write.src = &cgetdents;
   msg.body.dev_write.count = sizeof(cgetdents);
@@ -457,47 +528,58 @@ static int _rnode_getdents (struct vnode *pvn, char *buf, unsigned int count)
   // answer format:
   // 0: 55h
   // 1: len=5+count
-  // 2: type (1:file, 2:directory)
-  // 3+: name[count] (null terminated string)
+  // 2: 'd'
+  // 3: type (1:file, 2:directory)
+  // 4+: name[count] (null terminated string)
   // : checksum
   // : AAh
 
   //_dump_msg(_buf, 5+count);
 
-  if (msg.body.s32 == sizeof(agetdents) && _check_msg((u8_t *)&agetdents)) {
-    // valid frame
-    if (RFS_AGETDENTS_BUF(agetdents)[0]) {
-      RFS_AGETDENTS_BUF(agetdents)[count-offsetof(struct dirent, d_name)-1] = 0;  // limit max length
+  if (msg.body.s32 != sizeof(agetdents) || !_check_msg(agetdents)) {
+    K_PRINTF(2, "rfs: getdents: warning: bad frame\n");
+    return -1;
+  }
 
-      int len = strlen((char *)RFS_AGETDENTS_BUF(agetdents));
-
-      dirp->d_type = 0;
-
-      if (RFS_AGETDENTS_TYPE(agetdents) == 1) dirp->d_type = DT_REG;
-      if (RFS_AGETDENTS_TYPE(agetdents) == 2) dirp->d_type = DT_DIR;
-      
-      dirp->d_size = offsetof(struct dirent, d_name) + len + 1;
-      strcpy(dirp->d_name, (char *)RFS_AGETDENTS_BUF(agetdents));
-      
-      return offsetof(struct dirent, d_name) + len + 1;
-    }
-
-    // end of directory
+  //_dump_msg(agetdents, sizeof(agetdents));
+  
+  // valid frame
+  if (agetdents[4] == 0) {
+    // empty string : end of directory
     return 0;
   }
 
-  K_PRINTF(2, "rfs: getdents: warning: bad frame\n");
-  return -1;
+  // ensure null char at end of string
+  agetdents[4+RFS_MAX_NAME_LEN-1] = 0;
+
+  int len = strlen((char *)agetdents + 4);
+
+  // enough space ?
+  u16_t d_size = offsetof(struct dirent, d_name) + len + 1;
+  
+  if (count < d_size) {
+    // does not fit
+    return -EINVAL;
+  }
+
+  // fill dirent structure
+  dirp->d_size = d_size;
+  dirp->d_type = DT_UNKNOWN;
+  if (agetdents[3] == RFS_TYPE_UNK) dirp->d_type = DT_UNKNOWN;
+  if (agetdents[3] == RFS_TYPE_REG) dirp->d_type = DT_REG;
+  if (agetdents[3] == RFS_TYPE_DIR) dirp->d_type = DT_DIR;
+  
+  strcpy(dirp->d_name, (char *)agetdents + 4);
+      
+  return offsetof(struct dirent, d_name) + len + 1;
 }
 
 static int _rnode_ioctl (struct vnode *pvn, int request, mem_va_t ptr, pid_t pid)
-//int rfs_ioctl(fs_file_context_t *ctx, pid_t pid, int request, mem_va_t ptr)
 {
   return -1;
 }
 
 static int _rnode_mkdir (struct vnode *pvn, char *nm, pid_t pid)
-//static int _rfs_mkdir(fs_context_t *ctx, const char *pathname, mode_t mode)
 {
   struct vfs *pvfs = pvn->v_vfsp;
   struct rfs *prfs = (struct rfs *)&(pvfs->vfs_data[0]);
@@ -507,15 +589,24 @@ static int _rnode_mkdir (struct vnode *pvn, char *nm, pid_t pid)
 
   message_t msg;
 
-  int len = strlen(nm);
+  u16_t len = strlen(nm);
 
-  if (len > RFS_MAX_NAME_LEN) {
-    return ENAMETOOLONG;
+  if (len > (RFS_MAX_NAME_LEN - 1)) {
+    return -ENAMETOOLONG;
   }
 
   // send mkdir command
-  rfs_cmkdir_t cmkdir = RFS_CMKDIR(prn->rnode, 0 /* TODO flags */, pid, nm);
-  strcpy(RFS_CMKDIR_NAME(cmkdir), nm);
+  rfs_cmkdir_t cmkdir;  // = RFS_CMKDIR(prn->rnode, 0 /* TODO flags */, pid, nm);
+  cmkdir[0] = 0x55;
+  cmkdir[1] = RFS_PAYLOAD_LEN(sizeof(rfs_cmkdir_t));
+  cmkdir[2] = 'M';
+  (void)rfs_u32le_at(cmkdir + 3, prn->rnode);
+  cmkdir[7] = 0;    // TODO flags
+  cmkdir[8] = pid;
+  strcpy((char *)cmkdir + 9, nm);
+  memset(cmkdir + 9 + len, 0, RFS_MAX_NAME_LEN - len);
+  cmkdir[9+RFS_MAX_NAME_LEN] = _chksum(cmkdir + 2, RFS_PAYLOAD_LEN(sizeof(rfs_cmkdir_t)));
+  cmkdir[10+RFS_MAX_NAME_LEN] = 0xAA;
   
   msg.type = DEV_WRITE;
   msg.body.dev_write.handle = pdev->handle;
@@ -534,14 +625,15 @@ static int _rnode_mkdir (struct vnode *pvn, char *nm, pid_t pid)
   
   sendreceive(pdev->drv, &msg, O_SEND | O_RECV);
 
-  if (msg.body.s32 == sizeof(amkdir) && _check_msg((u8_t *)&amkdir) && RFS_AMKDIR_ERRNO(amkdir) == 0) {
+  if (msg.body.s32 == sizeof(amkdir) && _check_msg(amkdir) && amkdir[3] == 0) {
     K_PRINTF(3, "rfs: mkdir '%s'\n", nm);
 
     return 0;
   }
   
-  /* couldn't open file */
-  return RFS_AMKDIR_ERRNO(amkdir);  
+  // couldn't open file
+  // TODO translate error code
+  return -(int)amkdir[3];
 }
 
 static int _rnode_lookup(struct vnode *pvn, char *nm, struct vnode **ppv, pid_t pid)
@@ -555,12 +647,21 @@ static int _rnode_lookup(struct vnode *pvn, char *nm, struct vnode **ppv, pid_t 
   message_t msg;
   int len = strlen(nm);
 
-  if (len > RFS_MAX_NAME_LEN) {
+  if (len > (RFS_MAX_NAME_LEN - 1)) {
     return -ENAMETOOLONG;
   }
 
   // send open command
-  rfs_clookup_t clookup = RFS_CLOOKUP(prn->rnode, pid, nm);
+  rfs_clookup_t clookup;  // = RFS_CLOOKUP(prn->rnode, pid, nm);
+  clookup[0] = 0x55;
+  clookup[1] = RFS_PAYLOAD_LEN(sizeof(rfs_clookup_t));
+  clookup[2] = 'L';
+  (void)rfs_u32le_at(clookup + 3, prn->rnode);
+  clookup[7] = pid;
+  strcpy((char *)clookup + 8, nm);
+  memset(clookup + 8 + len, 0, RFS_MAX_NAME_LEN - len);
+  clookup[8+RFS_MAX_NAME_LEN] = _chksum(clookup + 2, RFS_PAYLOAD_LEN(sizeof(rfs_clookup_t)));
+  clookup[9+RFS_MAX_NAME_LEN] = 0xAA;
 
   msg.type = DEV_WRITE;
   msg.body.dev_write.handle = pdev->handle;
@@ -579,9 +680,10 @@ static int _rnode_lookup(struct vnode *pvn, char *nm, struct vnode **ppv, pid_t 
   
   sendreceive(pdev->drv, &msg, O_SEND | O_RECV);
 
-  rnode_t rn = RFS_ALOOKUP_RNODE(alookup);
+  rnode_t rn = rfs_read_u32le(alookup + 3);
+  u8_t type = alookup[7];
   
-  if (msg.body.s32 != sizeof(alookup) || !_check_msg((u8_t *)&alookup) || !rn) {
+  if (msg.body.s32 != sizeof(alookup) || !_check_msg((u8_t *)&alookup) || !type) {
     /* couldn't lookup file */
     return -1;  
   }
@@ -604,7 +706,7 @@ static int _rnode_lookup(struct vnode *pvn, char *nm, struct vnode **ppv, pid_t 
 
   VN_HOLD(*ppv);
   (*ppv)->v_vfsmountedhere = 0;
-  (*ppv)->v_type = RFS_ALOOKUP_TYPE(alookup);
+  (*ppv)->v_type = type == RFS_TYPE_DIR ? VDIR : VREG;
 
   prn = (struct rnode *)&((*ppv)->v_data[0]);
   
@@ -612,7 +714,7 @@ static int _rnode_lookup(struct vnode *pvn, char *nm, struct vnode **ppv, pid_t 
   prn->FileSize = 0;
   prn->lseek    = 0;
  
-  K_PRINTF(3, "rfs: lookup '%s': rnode %u, type %u\n", nm, prn->rnode, (*ppv)->v_type);
+  K_PRINTF(3, "rfs: lookup '%s': rnode %Xh, type %u\n", nm, prn->rnode, (*ppv)->v_type);
 
   return 0;
 }
@@ -622,9 +724,15 @@ static int _rnode_inactive (struct vnode *pvn)
   struct vfs *pvfs = pvn->v_vfsp;
   struct rfs *prfs = (struct rfs *)&(pvfs->vfs_data[0]);
 
-  // first in list is root directory, it would be remove when unmounting
-  //  so 1st vnode is not tested
+  // assumes list not empty (at least root vnode should be present)
   struct vnode *pvn_list = prfs->pvn;
+
+  if (pvn == pvn_list) {
+    // remove 1st
+    prfs->pvn = pvn->next;
+    vfs_vnode_free(pvn);
+    return 0;
+  }
 
   while (pvn_list) {
     if (pvn_list->next == pvn) {

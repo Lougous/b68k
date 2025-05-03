@@ -10,10 +10,10 @@
 
 /* kernel version */
 #define K_VERSION_MAJOR  0
-#define K_VERSION_MINOR  18
+#define K_VERSION_MINOR  19
 
 /* kernel debug / verbose level */
-#define K_DEBUG_LEVEL  2
+#define K_DEBUG_LEVEL  1
 
 /* hardware configuration */
 #define K_HAS_AV_BOARD

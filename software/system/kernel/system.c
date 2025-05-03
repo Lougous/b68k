@@ -241,6 +241,7 @@ void system_task (void)
     }
 
     // create /dev directory to able mounting  devfs
+#if 0
     msg.type = MKDIR;
     msg.body.mkdir.path = "/dev";
     msg.body.mkdir.len  = 4;
@@ -252,6 +253,7 @@ void system_task (void)
       K_PRINTF(0, "failed to create /dev, system startup aborted\n");
       goto abort;
     }
+#endif
     
     // devfs => /dev
     K_PRINTF(1, "mounting devfs\n");

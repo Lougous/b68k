@@ -10,11 +10,22 @@ extern void outx(unsigned int x, int to_pad);
 
 extern u32_t _size;
 
+extern u32_t irq_default;
+extern u32_t irq_group0;
+
 void loader(void)
 {
   B68K_MFP->ad = B68K_MFP_REG_POST;
   B68K_MFP->dt = 0xB0;
 
+  outs("loader: installing interrupt vectors\n");
+  u32_t *irq_table = (u32_t *)0;
+
+  irq_table[2] = irq_group0;	/* 08h - bus error */
+  irq_table[3] = irq_group0;	/* 0Ch - address error */
+  irq_table[4] = irq_default;	/* 10h - Illegal instruction */
+  irq_table[5] = irq_default;	/* 14h - Divide by zero */
+  
   outs("loader: starting serial boot\n");
   //  _puts("hello!\n");
 

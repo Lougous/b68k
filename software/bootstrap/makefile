@@ -27,7 +27,7 @@ boot_sector.bin: boot_sector.ld boot_sector.o
 	${OBJCOPY} -O binary --only-section=.text --only-section=.rodata --only-section=.sdata ${@:.bin=.elf} $@
 	truncate -s 512 $@
 
-loader.bin: loader.ld loader.o rfs.o stdout.o
+loader.bin: loader.ld loader.o rfs.o stdout.o regdump.o irq.o
 	${LD} -o ${@:.bin=.elf} ${LDFLAGS} -T $^ -lgcc
 	${OBJCOPY} -O binary --only-section=.text --only-section=.rodata --only-section=.sdata ${@:.bin=.elf} $@
 

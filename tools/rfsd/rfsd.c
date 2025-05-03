@@ -5,6 +5,7 @@
 // RFS remote server
 //
 
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -12,19 +13,24 @@
 #include <fcntl.h>
 #include <termios.h>
 #include <dirent.h>
+#include <sys/stat.h>
+
+typedef uint32_t u32_t;
+typedef uint8_t u8_t;
+#include "../../software/system/include/sys/rfs.h"
 
 #define PAGE_SIZE 64
 
 struct termios tio;
-int tty_fd;
+int _tty_fd;
 
-int serial_init(char *dev) {
+void serial_init(char *dev) {
 
-  tty_fd=open(dev, O_RDWR | O_NOCTTY);
+  _tty_fd=open(dev, O_RDWR | O_NOCTTY);
 
-  if (tty_fd == -1) {
+  if (_tty_fd == -1) {
     printf("failed to open device: %s\n", dev);
-    return -1;
+    return;
   }
   
   memset(&tio,0,sizeof(tio));
@@ -40,39 +46,40 @@ int serial_init(char *dev) {
   //cfsetospeed(&tio,B9600);
   //cfsetispeed(&tio,B9600);
   
-  if (tcsetattr(tty_fd,TCSANOW,&tio) == -1) {
+  if (tcsetattr(_tty_fd,TCSANOW,&tio) == -1) {
     printf("failed to configure serial port\n");
   }
 
-  return tty_fd;
+  return;
 }
 
-void serial_send(char c, int fd) {
-  int nb = write(fd, &c, 1);
+static void _send_char (u8_t c)
+{
+  int nb = write(_tty_fd, &c, 1);
 
   if (nb != 1) {
     printf("\nerror: nb sent is not 1 (%d)\n", nb);
-  }
+  }  
 }
 
-void send_msg(unsigned char *msg, int len)
+static void _send_msg(u8_t *msg, u8_t len)
 {
-  unsigned char sum = 0;
-  
-  serial_send(0x55, tty_fd);
-  serial_send((unsigned char) len, tty_fd);
+  _send_char(0x55);
+  _send_char(len);
 
+  u8_t csum = 0;
+  
   while (len--) {
-    serial_send(*msg, tty_fd);
-    sum += *msg++;
+    csum += *msg;
+    _send_char(*msg++);
   }
 
-  serial_send(sum, tty_fd);
-  serial_send(0xAA, tty_fd);
+  _send_char(csum);
+  _send_char(0xAA);
 }
 
-int serial_recv(int fd, char *c) {
-  int nb = read(fd, c, 1);
+int serial_recv(char *c) {
+  int nb = read(_tty_fd, c, 1);
   
   if (nb < 0) {
     printf("error: read returned %d\n", nb);
@@ -104,202 +111,343 @@ typedef enum { F_SOF,
 #define F_RDWR          00000003
 #define F_DIRECTORY     00000004
 
-typedef struct {
-  char flags;
+struct desc {
+  struct desc *next;
   
-  union desc {
+  union {
     FILE *file;
     DIR *dir;
-  } desc;
-} desc_t;
+  } open;
 
-desc_t _open_files[FILE_CNT];
-char *_path = 0;
+  struct stat stat;
+
+  char *pathname;
+};
+
+struct desc *_descriptors = NULL;
+char *_path = NULL;
 
 int DEBUG = 0;
 
-void do_cmd (unsigned char *cmd, int len)
+struct desc *_find_by_node(rnode_t rnode)
 {
-  int f;
-  unsigned char resp[256];
-  char filename[256];
-  ssize_t rcnt;
-  off_t offset;
-  char flags;
+  struct desc *pd = _descriptors;
+
+  while (pd) {
+    if (pd->stat.st_ino == rnode) {
+      return pd;
+    }
+
+    pd = pd->next;
+  }
+
+  return NULL;
+}
+
+void do_cmd (unsigned char *cmd)
+{
+  if (_descriptors == NULL && cmd[0] != 'I') {
+    printf("E: ignoring command %c\n", cmd[0]);
+    return ;
+  }
   
   switch (cmd[0]) {
   case 'I':
     /* init */
-    if (DEBUG) printf("I: (re)initialize\n");
-    
-    for (f = 0; f < FILE_CNT; f++) {
-      if (_open_files[f].flags == F_DIRECTORY) {
-	closedir(_open_files[f].desc.dir);
-      } else if (_open_files[f].flags) {
-	fclose(_open_files[f].desc.file);
+    if (DEBUG) printf("C: (re)initialize\n");
+
+    struct desc *pd = _descriptors;
+
+    while (pd) {
+      if ((pd->stat.st_mode & S_IFMT) == S_IFDIR && pd->open.dir) {
+	closedir(pd->open.dir);
+      } else if (pd->open.file) {
+	fclose(pd->open.file);
       }
-      
-      _open_files[f].flags = 0;
-      _open_files[f].desc.file = NULL;
+
+      if (pd->pathname) {
+	free(pd->pathname);
+      }
+
+      struct desc *pdfree = pd;
+
+      pd = pd->next;
+      free(pdfree);
     }
+
+    _descriptors = NULL;
+
+    // 
+    _descriptors = (struct desc *)malloc(sizeof(struct desc));
+    _descriptors->next = NULL;
+
+    u8_t areset[RFS_PAYLOAD_LEN(sizeof(rfs_areset_t))] = { 0 };
+    areset[0] = 'I';
     
-    resp[0] = 1;
-    send_msg(resp, 1);
+    if (stat(_path, &_descriptors->stat) != 0) {
+      printf("E: cannot stat root directory (%s)\n", _path);
+      free(_descriptors);
+      _descriptors = NULL;
+      
+      _send_msg(areset, sizeof(areset));
+      break;
+    }
+
+    if ((_descriptors->stat.st_mode & S_IFMT) != S_IFDIR) {
+      printf("E: root directory (%s) is no actual directory (\n", _path);
+      free(_descriptors);
+      _descriptors = NULL;
+      
+      _send_msg(areset, sizeof(areset));
+      break;
+    }
+      
+    _descriptors->open.dir = NULL;
+    _descriptors->pathname = strdup(_path);
+      
+    rfs_u32le_at(areset+1, _descriptors[0].stat.st_ino);
+    _send_msg(areset, sizeof(areset));
+
+    if (DEBUG) printf("I: root directory inode is %Xh\n", (uint32_t)_descriptors[0].stat.st_ino);
+    
+    break;
+
+  case 'L':
+    // lookup
+    {
+      u8_t alookup[RFS_PAYLOAD_LEN(sizeof(rfs_alookup_t))] = { 0 };
+      alookup[0] = 'l';
+      
+      rnode_t rnode = rfs_read_u32le(cmd+1);
+      //u8_t pid = cmd[5];
+      char *name = (char *)(cmd+6);
+
+      if (DEBUG) printf("C: looking up for %s\n", name);
+
+      // find descriptor for this node
+      struct desc *pdesc = _find_by_node(rnode);
+
+      if (! pdesc) {
+	printf("E: invalid node %Xh (looking up for %s)\n", rnode, name);
+	_send_msg(alookup, sizeof(alookup));
+	break;
+      }
+
+      if ((pdesc->stat.st_mode & S_IFMT) != S_IFDIR) {
+	printf("E: looking up in node %Xh that is no directory (looking up for %s)\n", rnode, name);
+	_send_msg(alookup, sizeof(alookup));
+	break;
+      }
+
+      // build path
+      char buf[256];
+
+      snprintf(buf, sizeof(buf), "%s/%s", pdesc->pathname, name);
+
+      struct desc *pchild = (struct desc *)malloc(sizeof(struct desc));
+    
+      if (stat(buf, &pchild->stat) == 0) {
+	pchild->open.dir = NULL;
+	pchild->pathname = strdup(buf);
+	pchild->next = _descriptors;
+
+	_descriptors = pchild;
+
+	u8_t *pc = alookup + 1;
+	pc = rfs_u32le_at(pc, pchild->stat.st_ino);
+	*pc++ = (pchild->stat.st_mode & S_IFMT) == S_IFDIR ? RFS_TYPE_DIR : RFS_TYPE_REG;
+	
+	_send_msg(alookup, sizeof(alookup));
+	if (DEBUG) printf("I: file exists with node %Xh\n", (uint32_t)pchild->stat.st_ino);
+      } else {
+	if (DEBUG) printf("I: file does not exist\n");
+	_send_msg(alookup, sizeof(alookup));
+      }
+    }
+    break;
+    
+  case 'O':
+    // open
+    {
+      u8_t aopen[RFS_PAYLOAD_LEN(sizeof(rfs_aopen_t))] = { 0 };
+      aopen[0] = 'o';
+      
+      rnode_t rnode = rfs_read_u32le(cmd+1);
+      u8_t flags = cmd[5];
+      //u8_t pid = buf[6];
+      
+      if (DEBUG > 1) printf("C: open node %Xh\n", rnode);
+
+      // find descriptor for this node
+      struct desc *pdesc = _find_by_node(rnode);
+      
+      if (! pdesc) {
+	printf("E: invalid node %Xh (open)\n", rnode);
+	_send_msg(aopen, sizeof(aopen));
+	break;
+      }
+
+      u32_t size = 0;
+
+      if (flags == F_DIRECTORY) {
+	pdesc->open.dir = opendir((const char *)pdesc->pathname);
+      } else {
+	pdesc->open.file = fopen((const char *)pdesc->pathname, "rb");
+
+	if (pdesc->open.file) {
+	  fseek(pdesc->open.file, 0, SEEK_END);
+	  size = ftell(pdesc->open.file);
+	  fseek(pdesc->open.file, 0, SEEK_SET);
+	}
+      }
+
+      if (DEBUG) printf("I: open %s, size %Xh\n", pdesc->pathname, size);
+
+      aopen[1] = pdesc->open.dir ? 1 : 0;
+      (void)rfs_u32le_at(aopen+2, size);
+      _send_msg(aopen, sizeof(aopen));
+
+    }
+    break;
+
+  case 'C':
+    // close
+    {
+      u8_t aclose[RFS_PAYLOAD_LEN(sizeof(rfs_aclose_t))] = { 0 };
+      aclose[0] = 'c';
+      
+      rnode_t rnode = rfs_read_u32le(cmd+1);
+
+      if (DEBUG > 1) printf("C: close node %Xh\n", rnode);
+
+      // find descriptor for this node
+      struct desc *pdesc = _find_by_node(rnode);
+      
+      if (! pdesc) {
+	printf("E: invalid node %Xh (close)\n", rnode);
+	
+	aclose[1] = 0;
+	_send_msg(aclose, sizeof(aclose));
+
+	break;
+      }
+
+      if ((pdesc->stat.st_mode & S_IFMT) == S_IFDIR && pdesc->open.dir) {
+        closedir(pdesc->open.dir);
+	pdesc->open.dir = NULL;
+      } else if ((pdesc->stat.st_mode & S_IFMT) != S_IFDIR && pdesc->open.file) {
+	fclose(pdesc->open.file);
+	pdesc->open.file = NULL;
+      }
+
+      aclose[1] = 1;
+      _send_msg(aclose, sizeof(aclose));
+    }
     break;
 
   case 'D':
     /* getdents */
-    cmd++; len--;
-
     {
-      int fd = cmd[0];
-      int count = cmd[1];
-      
-      if (DEBUG) printf("I: getdents fd-%d (%i bytes)\n", fd, count);
+      u8_t agetdents[RFS_PAYLOAD_LEN(sizeof(rfs_agetdents_t))] = { 0 };
+      agetdents[0] = 'd';
+      agetdents[1] = RFS_TYPE_UNK;
 
-      struct dirent *de = readdir(_open_files[fd].desc.dir);
+      rnode_t rnode = rfs_read_u32le(cmd+1);
+      //u8_t dpos = cmd[5];
+
+      if (DEBUG > 1) printf("C: getdents node %Xh\n", rnode);
+
+      // find descriptor for this node
+      struct desc *pdesc = _find_by_node(rnode);
+      
+      if (! pdesc) {
+	printf("E: invalid node %Xh (getdents)\n", rnode);
+	
+	_send_msg(agetdents, sizeof(agetdents));
+
+	break;
+      }
+
+      if (! pdesc->open.dir) {
+	printf("E: getdents: not open\n");
+	
+	_send_msg(agetdents, sizeof(agetdents));
+
+	break;
+      }
+	
+      struct dirent *de = readdir(pdesc->open.dir);
 
       if (de) {
-	resp[0] = 0;
-	if (de->d_type == DT_REG) resp[0] = 1;
-	if (de->d_type == DT_DIR) resp[0] = 2;
+	if (strlen(de->d_name) < RFS_MAX_NAME_LEN) {
+	  if (de->d_type == DT_REG) agetdents[1] = RFS_TYPE_REG;
+	  if (de->d_type == DT_DIR) agetdents[1] = RFS_TYPE_DIR;
+	  if (DEBUG > 1) printf("   %s (d_type=%u  type=%u)\n", de->d_name, de->d_type, agetdents[1]);
 
-	strncpy((char *)&resp[1], de->d_name, count-2);
-	
+	  strcpy((char *)agetdents + 2, de->d_name);
+	} else {
+	  printf("E: getdents: name too long\n");
+	}	
       } else {
 	// last entry
-	resp[0] = 0;
-	resp[1] = 0;
+	agetdents[1] = RFS_TYPE_UNK;
       }
 
-      send_msg(resp, count+1);
+      _send_msg(agetdents, sizeof(agetdents));
     }
       
-    break;
-    
-  case 'O':
-    /* open */
-    cmd++; len--;
-
-    flags = *cmd;
-
-    cmd++; len--;
-
-    cmd[len] = 0;
-
-    sprintf(filename, "%s/%s", _path, cmd);
-
-    if (DEBUG) printf("I: open '%s', flags %Xh\n", filename, flags);
-      
-    for (f = 0; f < FILE_CNT; f++) {
-      if (_open_files[f].flags == 0) break;
-    }
-
-    if (f == FILE_CNT) {
-      /* out of ressources */
-      printf("E: out of ressources\n");
-      resp[0] = 0;
-      resp[1] = 0;
-    } else {
-      int size = 0;
-      
-      if (flags == F_DIRECTORY) {
-	DIR *dir = opendir((const char *)filename);
-
-	if (dir) {
-	  _open_files[f].flags = F_DIRECTORY;
-	  _open_files[f].desc.dir = dir;
-	}
-      } else {
-	FILE *file = fopen((const char *)filename, "rb");
-
-	if (file) {
-	  _open_files[f].flags = F_RDONLY;
-	  _open_files[f].desc.file = file;
-
-	  fseek(_open_files[f].desc.file, 0, SEEK_END);
-	  size = ftell(_open_files[f].desc.file);
-	  fseek(_open_files[f].desc.file, 0, SEEK_SET);
-	}
-      }
-      
-      if (_open_files[f].flags) {
-	if (DEBUG) printf("I: open fd is %i\n", f);
-	resp[0] = 1;
-	resp[1] = f;
-	resp[2] = (unsigned char)(size & 0xff);
-	resp[3] = (unsigned char)((size >> 8) & 0xff);
-	resp[4] = (unsigned char)((size >> 16) & 0xff);
-	resp[5] = (unsigned char)((size >> 24) & 0xff);
-      } else {
-	printf("E: cannot open file\n");
-	resp[0] = 0;
-	resp[1] = 0;
-	resp[2] = 0;
-	resp[3] = 0;
-	resp[4] = 0;
-	resp[5] = 0;
-      }
-    }
-
-    send_msg(resp, 6);
-    break;
-
-  case 'C':
-    /* close */
-    cmd++; len--;
-
-    cmd[len] = 0;
-    if (DEBUG) printf("I: close fd-%u\n", cmd[0]);
-
-    if (_open_files[cmd[0]].flags == 0) {
-      resp[0] = 0;
-    } else if (_open_files[cmd[0]].flags == F_DIRECTORY) {
-      closedir(_open_files[cmd[0]].desc.dir);
-      _open_files[cmd[0]].flags = 0;
-      _open_files[cmd[0]].desc.dir = NULL;
-      resp[0] = 1;
-    } else {
-      fclose(_open_files[cmd[0]].desc.file);
-      _open_files[cmd[0]].flags = 0;
-      _open_files[cmd[0]].desc.file = NULL;
-      resp[0] = 1;      
-    }
-
-    send_msg(resp, 1);
     break;
 
   case 'R':
-    /* read */
-    cmd++; len--;
+    // read
+    {
+      u8_t aread[RFS_MAX_READ+1] = { 0 };  // +1 byte CID
+      aread[0] = 'r';
+      
+      u8_t len = cmd[1];
+      rnode_t rnode = rfs_read_u32le(cmd+2);
+      off_t offset = rfs_read_u32le(cmd+6);
 
-    offset =
-      ((off_t)cmd[2]) +
-      (((off_t)cmd[3]) << 8) +
-      (((off_t)cmd[4]) << 16) +
-      (((off_t)cmd[5]) << 24);
+      if (DEBUG > 1) printf("C: read node %Xh@%Xh len=%u \n", rnode, (unsigned int)offset, len);
 
-    memset(resp, 0, cmd[1]);
+      // check length
+      if (len > RFS_MAX_READ) {
+	printf("E: length exceeds RFS_MAX_READ\n");
+	
+	aread[1] = RFS_AREAD_KO;
+	_send_msg((unsigned char *)&aread, RFS_PAYLOAD_LEN(sizeof(rfs_aread_ko_t)));
+	break;
+      }
+      
+      // find descriptor for this node
+      struct desc *pdesc = _find_by_node(rnode);
+      
+      if (! pdesc) {
+	printf("E: invalid node %Xh (close)\n", rnode);
+	
+	aread[1] = RFS_AREAD_KO;
+	_send_msg((unsigned char *)&aread, RFS_PAYLOAD_LEN(sizeof(rfs_aread_ko_t)));
+	break;
+      }
+
+      FILE *fdes = pdesc->open.file;
     
-    if (DEBUG > 1) printf("I: read fd-%i@%Xh len=%u \n", cmd[0], (unsigned int)offset, cmd[1]);
+      fseek(fdes, offset, SEEK_SET);
 
-    FILE *fdes = _open_files[cmd[0]].desc.file;
-    
-    fseek(fdes, offset, SEEK_SET);
-    rcnt = fread(resp + 1, 1, cmd[1], fdes);
+      ssize_t rcnt = fread(aread + 2, 1, len, fdes);
 
-    if (rcnt >= 0) {
-      resp[0] = rcnt;
-    } else {
-      resp[0] = 0xff;
-    }    
+      if (rcnt >= 0) {
+	aread[1] = RFS_AREAD_OK;
+      } else {
+	aread[1] = RFS_AREAD_KO;
+      }    
 
-    send_msg(resp, cmd[1]+1);
-    
+      _send_msg(aread, RFS_PAYLOAD_LEN(sizeof(rfs_aread_ko_t))+len);
+    }
     break;
     
   default:
-    printf("E: unsupported command ('%c')\n", cmd[0]);
+    printf("E: unsupported command ('%c')\n", cmd[2]);
     break;
   }
 
@@ -308,7 +456,6 @@ void do_cmd (unsigned char *cmd, int len)
 
 int main (int argc, char *argv[]) {
   char *sdev = 0;
-  int tty_fd;
 
   while (argc > 1) {
     if (strcmp("--help", argv[1]) == 0) {
@@ -359,9 +506,9 @@ int main (int argc, char *argv[]) {
   }
 
   /* setup serial link */
-  tty_fd = serial_init(sdev);
+  serial_init(sdev);
 
-  if (tty_fd <= 0) {
+  if (_tty_fd <= 0) {
     printf("error: cannot access device %s\n", sdev);
     return 0;
   } else {
@@ -374,12 +521,8 @@ int main (int argc, char *argv[]) {
   unsigned char cks;
   int len;
   fsm_t framer_fsm = F_SOF;
-  int f;
 
-  for (f = 0; f < FILE_CNT; f++) {
-    _open_files[f].flags = 0;
-    _open_files[f].desc.file = NULL;
-  }
+  _descriptors = NULL;
   
   /* structure: SOF (0x55) LEN [command] CKS EOF (0xAA) */
   while (1) {
@@ -388,17 +531,20 @@ int main (int argc, char *argv[]) {
     case F_SOF:
       len = 0;
       
-      if ((read(tty_fd, buf, 1) == 1) &&
-	  (buf[0] == 0x55)) {
-	framer_fsm = F_LEN;
+      if (read(_tty_fd, buf, 1) == 1) {
+	if (buf[0] == 0x55) {
+	  framer_fsm = F_LEN;
 
-	if (DEBUG >= 3) printf("55h ");
+	  if (DEBUG >= 3) printf("> 55h ");
     
+	} else {
+	  if (DEBUG >= 3) printf("ignoring byte %02Xh\n", buf[0]);
+	}
       }
       break;
 
     case F_LEN:
-      if (read(tty_fd, buf+1, 1) == 1) {
+      if (read(_tty_fd, buf+1, 1) == 1) {
 	framer_fsm = F_CMD;
 	
 	if (DEBUG >= 3) printf("%Xh [ ", buf[1]);
@@ -409,7 +555,7 @@ int main (int argc, char *argv[]) {
 
     case F_CMD:
       while (len < buf[1]) {
-	int nlen = read(tty_fd, buf+2+len, buf[1]-len);
+	int nlen = read(_tty_fd, buf+2+len, buf[1]-len);
 
 	if (DEBUG >= 3) {
 	  int i;
@@ -434,7 +580,7 @@ int main (int argc, char *argv[]) {
       break;
 
     case F_CKS:
-      if (read(tty_fd, buf+2+len, 1) == 1) {
+      if (read(_tty_fd, buf+2+len, 1) == 1) {
 	int i;
 	cks = 0;
 
@@ -462,11 +608,11 @@ int main (int argc, char *argv[]) {
       break;
 	  
     case F_EOF:
-      if (read(tty_fd, buf, 1) == 1) {
-	if (buf[0] == 0xAA) {
+      if (read(_tty_fd, buf+2+len+1, 1) == 1) {
+	if (buf[2+len+1] == 0xAA) {
 	  /* valid command ! */
 	  if (DEBUG >= 3) printf("AAh\n");
-	  do_cmd(buf + 2, len);
+	  do_cmd(buf+2);  // skip header
 	} else {
 	  printf("E: rejected command (bad EOF)\n");
 	}

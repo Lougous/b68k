@@ -6,8 +6,8 @@
 /*	.long k_stktop	/* 00h - reset SSP */
 	.long 0		/* 00h - reset SSP */
 	.long start	/* 04h - reset PC */
-	.long default	/* 08h - bus error */
-	.long default	/* 0Ch - address error */
+	.long group0	/* 08h - bus error */
+	.long group0	/* 0Ch - address error */
 	.long default	/* 10h - Illegal instruction */
 	.long default	/* 14h - Divide by zero */
 	.long default	/* 18h - CHK instruction */
@@ -72,6 +72,7 @@
 	.global start
 	.global loader
 	.global stack
+	.global reg_dump
 
 start:
 	/* disable interrupts */
@@ -126,6 +127,12 @@ bl_loop:
 	/* default interruption entry
 	/******************************************************/
 default:
+	/* POST(0xFE) */
+	move.b #B68K_MFP_REG_POST,B68K_MFP_AD
+	move.b #0xFE,B68K_MFP_DT
+	bra dead
+
+group0:
 	/* POST(0xFF) */
 	move.b #B68K_MFP_REG_POST,B68K_MFP_AD
 	move.b #0xFF,B68K_MFP_DT
@@ -139,4 +146,3 @@ irq:
 
 dead:
 	bra dead
-	

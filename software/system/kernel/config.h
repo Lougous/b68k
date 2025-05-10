@@ -22,9 +22,6 @@
 /* kernel space stack size */
 #define K_STACK_BYTES  0x2000
 
-/* serial bootstrap init process size */
-#define K_BSTP_BYTES  0x10000
-
 /* max number of TTYs */
 #define K_TTY_COUNT        4
 

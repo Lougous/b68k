@@ -246,7 +246,7 @@ int _lookuppn (char *nm, struct vnode **ppv, pid_t pid)
     char cbak = nm[elen];
     nm[elen] = 0;
     
-    K_PRINTF(3, "vfs:   path elem: %s\n", nm);
+    K_PRINTF(3, "vfs:   path elem: %s (%u)\n", nm, elen);
     ret = pvn->v_op->vn_lookup(pvn, nm, ppv, pid);
     VN_RELE(pvn);
     pvn = *ppv;
@@ -695,11 +695,11 @@ static void _vfs_ioctl (pid_t pid, message_t *msg)
 static void _vfs_chdir (pid_t pid, message_t *msg)
 {
   message_t resp;
-  u16_t len = msg->body.chdir.len;
+  u16_t len = msg->body.chdir.len;  // includes terminating null character
 	
   K_PRINTF(3, "vfs: PID-%i CHDIR: %Xh (%u)\n", pid, (mem_va_t)msg->body.chdir.path, len);
 
-  if ((! len) || (len > K_MAX_DIRNAME_LEN)) {
+  if ((len <= 0) || (len > K_MAX_DIRNAME_LEN)) {
     K_PRINTF(3, "vfs: PID-%i CHDIR: EINVAL\n", pid);
     resp.body.s32 = -EINVAL;
     goto _vfs_chdir_exit;
@@ -714,7 +714,7 @@ static void _vfs_chdir (pid_t pid, message_t *msg)
     goto _vfs_chdir_exit;
   }
     
-  if (path[len]) {
+  if (path[len-1]) {
     K_PRINTF(3, "vfs: PID-%i CHDIR: EINVAL\n", pid);
     resp.body.s32 = -EINVAL;
     goto _vfs_chdir_exit;

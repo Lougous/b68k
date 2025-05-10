@@ -23,7 +23,8 @@
 char line[BUFLEN];
 char *c_args[MAX_ARGS];
 
-char cpath[PATH_MAX+1];
+char cpath[PATH_MAX+1];  // current path
+char opath[PATH_MAX+1];  // old path
 
 static void _cut_words (char *cline)
 {
@@ -215,18 +216,31 @@ int main (int argc, char *argv[])
       if (strcmp(c_args[0], "cd") == 0) {
 	char path[PATH_MAX+1];
 
-	if (_build_path(path, c_args[1]) < 0) {
-	  printf("sh: cd: %s: Path too long\n", c_args[1]);
-	  continue;
-	}
-	
-	if (chdir(path) < 0) {
-	  printf("sh: cd: %s: No such directory\n", path);
-	  continue;
-	}
+	if (c_args[1] && (c_args[1][0] == '-') && (c_args[1][1] == 0)) {
+	  // cd -
+	  if (chdir(opath) < 0) {
+	    printf("sh: cd: %s: No such directory\n", opath);
+	    continue;
+	  }
 
-	strncpy(cpath, path, PATH_MAX);
-	cpath[PATH_MAX] = 0;  // safe guard
+	  strcpy(path, cpath);
+	  strcpy(cpath, opath);
+	  strcpy(opath, path);
+	} else {
+	  if (_build_path(path, c_args[1]) < 0) {
+	    printf("sh: cd: %s: Path too long\n", c_args[1]);
+	    continue;
+	  }
+	
+	  if (chdir(path) < 0) {
+	    printf("sh: cd: %s: No such directory\n", path);
+	    continue;
+	  }
+
+	  strcpy(opath, cpath);
+	  strncpy(cpath, path, PATH_MAX);
+	  cpath[PATH_MAX] = 0;  // safe guard
+	}
 
 	continue;
       }

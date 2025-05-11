@@ -454,7 +454,7 @@ static void _vfs_open (pid_t pid, message_t *msg)
   resp.body.s32 = _lookuppn(path, &pvn, pid);
 
   if (resp.body.s32) {
-    K_PRINTF(3, "vfs: PID-%i OPEN: %i\n", pid, resp.body.s32);
+    K_PRINTF(3, "vfs: PID-%i OPEN: error %i\n", pid, resp.body.s32);
     goto _vfs_open_exit;
   }
     
@@ -479,7 +479,7 @@ static void _vfs_open (pid_t pid, message_t *msg)
   // success
   _vfs_proc_table[pid].fd_table[fd] = pvn;
   
-  K_PRINTF(3, "vfs: PID-%i OPEN: pid %i, node %Xh\n", pid, fd, pvn);
+  K_PRINTF(3, "vfs: PID-%i OPEN: fd %i, node %Xh\n", pid, fd, pvn);
   resp.body.s32 = fd;
 
  _vfs_open_exit:
@@ -575,6 +575,8 @@ static void _vfs_kill (pid_t pid, message_t *msg)
     int fd;
     
     /* close any file for killed process */
+    K_PRINTF(3, "     closing files\n");
+    
     for (fd = 0; fd < K_PROC_FD_COUNT; fd++) {
       struct vnode *pvn = _vfs_vnode_from_fd(pid, fd);
       
@@ -586,6 +588,8 @@ static void _vfs_kill (pid_t pid, message_t *msg)
     }
     
     // default current directory
+    K_PRINTF(3, "     closing current directory\n");
+    
     if (_vfs_proc_table[pid].cdir) {
       VN_RELE(_vfs_proc_table[pid].cdir);
       _vfs_proc_table[pid].cdir = _K_VNODE_NULL;
@@ -855,6 +859,11 @@ static void _vfs_fork (pid_t pid, message_t *msg)
       struct vnode *pvn = _vfs_proc_table[ppid].fd_table[fd];
 
       if (pvn) VN_HOLD(pvn);
+    }
+
+    /* current directory */
+    if (_vfs_proc_table[child].cdir) {
+      VN_HOLD(_vfs_proc_table[child].cdir);
     }
     
     /* acknowledge (no argument) */

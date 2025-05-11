@@ -163,13 +163,14 @@ const struct vfsops _devfs_vfs_op = {
 ////////////////////////////////////////////////////////////////////////////////
 static int _vn_open(struct vnode *pvn, int flags, pid_t pid)
 {
-  if (pvn->v_type == VDIR) {
-    return 0;
-  }
-  
   struct devnode *pdn = (struct devnode *)&(pvn->v_data[0]);
   dev_t *pdev = pdn->pdev;
 
+  if (pvn->v_type == VDIR) {
+    pdn->lseek = 0;
+    return 0;
+  }
+  
   // pdev should be valid here if vnode properly returned by lookup
   message_t msg;
   msg.type = DEV_OPEN;

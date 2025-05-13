@@ -7,3 +7,6 @@ CFLAGS=-Wall -g
 
 rfsd:	rfsd.o
 	gcc -Wall -g -o $@ $^
+
+clean:
+	rm -f rfsd.o rfsd

@@ -5,7 +5,8 @@ AS=${XCROOT}gcc
 ASFLAGS=-march=68000 -c -x assembler-with-cpp
 
 CC=${XCROOT}gcc
-CFLAGS=-Wall -mcpu=68000 -mstrict-align -O1 -nostdlib -fno-builtin-fprintf \
+CFLAGS=-Wall -mcpu=68000 -mstrict-align -O1 -nostdlib \
+-fno-builtin \
 -Ilibc/include -Iinclude -I../include -I.
 
 LD=${XCROOT}gcc

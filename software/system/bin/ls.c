@@ -59,14 +59,7 @@ int main (int argc, char *argv[])
   int multi = argc > 2;
 
   if (argc < 2) {
-    static char buf[PATH_MAX];
-
-    if (getcwd(buf, sizeof(buf))) {
-      _ls(buf, 0);
-      return 0;
-    } else {
-      printf("ls: failed to get current directory\n");
-    }    
+    _ls(".", 0);
   } else {
     argc--;
     argv++;

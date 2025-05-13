@@ -20,10 +20,8 @@ SECTIONS
     *(.sdata)
   } >sys_data
  .bss : {
-    __s_bss = . ;
     *(.bss)
-    __e_bss = . ;
-  } >sys_data
+  } >boot_bss
 */
 /*  .data : { *(.data) } >ram*/
 }

@@ -11,7 +11,7 @@ AS=${XCROOT}gcc
 ASFLAGS=-march=68000 -c -x assembler-with-cpp
 
 CC=${XCROOT}gcc
-CFLAGS=-Wall -m68000 -mstrict-align -O1 -nostdlib \
+CFLAGS=-Wall -m68000 -mstrict-align -fno-builtin -O1 -nostdlib \
 -I../lib/libc/include -Iinclude -I../include -I.
 
 LD=${XCROOT}ld
@@ -21,7 +21,7 @@ LDLIBS=-lc -lgcc
 OBJCOPY=${XCROOT}objcopy
 OBJDUMP=${XCROOT}objdump
 
-BIN=ls sh cat pwd init
+BIN=ls sh cat init
 
 # entries
 all:	libc crt0.o ${BIN}
@@ -33,7 +33,6 @@ libc:
 ls:	ls.o
 sh:	sh.o
 cat:	cat.o
-pwd:	pwd.o
 init:	init.o 
 
 clean:

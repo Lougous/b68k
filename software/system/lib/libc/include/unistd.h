@@ -19,6 +19,5 @@ int fork(void);
 int execv(const char *pathname, char *const argv[]);
 
 int chdir(const char *path);
-char *getcwd(char *buf, size_t size);
 
 #endif /* _unistd_h_ */

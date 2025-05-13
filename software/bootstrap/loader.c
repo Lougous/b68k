@@ -3,37 +3,46 @@
 #include "b68k.h"
 
 extern int rfs_init(void);
-extern int rfs_open(const char *pathname, u8_t len);
-extern u32_t rfs_read(int fd, void *buf, u32_t count);
+extern int rfs_open(const char *pathname);
+extern u32_t rfs_read(void *buf, u32_t count);
 extern void outs(char *msg);
 extern void outx(unsigned int x, int to_pad);
 
 extern u32_t _size;
+
+extern u32_t irq_default;
+extern u32_t irq_group0;
 
 void loader(void)
 {
   B68K_MFP->ad = B68K_MFP_REG_POST;
   B68K_MFP->dt = 0xB0;
 
-  outs("starting serial boot loader\n");
+  outs("loader: installing interrupt vectors\n");
+  u32_t *irq_table = (u32_t *)0;
+
+  irq_table[2] = irq_group0;	/* 08h - bus error */
+  irq_table[3] = irq_group0;	/* 0Ch - address error */
+  irq_table[4] = irq_default;	/* 10h - Illegal instruction */
+  irq_table[5] = irq_default;	/* 14h - Divide by zero */
+  
+  outs("loader: starting serial boot\n");
   //  _puts("hello!\n");
 
   // enable interrupt so that interrupt flag will be set when some character arrives
   // (interrupt is masked in 68k SR register, so polling on this bit is used)
-  outs("enable IO board IRQ for serial\n");
+  outs("loader: enable IO board IRQ for serial\n");
   B68K_IO->ad = B68K_IO_REG_IRQCFG;
   B68K_IO->dt = B68K_IO_IRQ_SERIAL_MASK;
 
-  int fd;
-  
   if (rfs_init() != 0) return;
-  if ((fd = rfs_open("system.bin", 10)) < 0) return;
-  if (rfs_read(fd, (u8_t *)0, _size) != _size) {
-    outs("error: failed to load file\n");
+  if ((rfs_open("system.bin")) < 0) return;
+  if (rfs_read((u8_t *)0, _size) != _size) {
+    outs("loader: error: failed to load file\n");
     return;
   }
   
-  outs("load complete, jump at ");
+  outs("loader: complete, jump at ");
   typedef void (*pfct_t)(void);
   pfct_t start_address = (pfct_t)*((u32_t *)0x4); 
   outx((u32_t)start_address, 6);

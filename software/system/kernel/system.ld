@@ -3,10 +3,9 @@ ENTRY(start)
 
 MEMORY
   {
-    /* reserve RAM area for the boot */
-/*  rsvd (!rwx) : org = 0x00000000, l = 64K */
-    sys_text (!rwx) : org = 0x00000000, l = 64K
-    sys_data (!rwx) : org = 0x00010000, l = 128K
+    /* coherency to check with _K_MEM_RSVD_BLOCKS in mem.c ! */
+    sys_text (!rwx) : org = 0x00000000, l = 128K
+    sys_data (!rwx) : org = 0x00020000, l = 128K
   }
 
 SECTIONS

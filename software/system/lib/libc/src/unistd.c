@@ -139,20 +139,3 @@ int chdir(const char *path)
   return msg.body.s32;
 }
 
-char *getcwd(char *buf, size_t size)
-{
-  // message to vfs task
-  volatile message_t msg = { .type = GETCWD,
-			     .body.getcwd.buf = buf,
-			     .body.getcwd.size = size };
-
-  u32_t rval;
-
-  SENDRECEIVE(msg, 3, rval);
-
-  if (rval != 3 || msg.body.s32 < 0) {
-    return NULL;
-  }
-  
-  return buf;
-}

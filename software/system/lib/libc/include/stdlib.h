@@ -22,4 +22,9 @@ int abs(int j);
 void *malloc(size_t size);
 void free(void *ptr);
 
+// environment variables
+int setenv(const char *name, const char *value, int overwrite);
+int unsetenv(const char *name);
+char *getenv(const char *name);
+
 #endif /* _stdlib_h_ */

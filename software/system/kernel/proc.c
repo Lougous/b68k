@@ -586,6 +586,7 @@ int proc_exec(pid_t pid, int argc, const char *argv[], char *pa_argbuf, u16_t ar
   
   pp->a[0] = argc;
   pp->a[1] = va_argv;
+  pp->a[2] = 0;  // TODO envp
   pp->pc = e_entry;
   /* invalid SP, will do address error if not properly initialized by process itself */
   pp->a[7] = 0xffffffff;

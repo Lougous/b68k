@@ -267,7 +267,7 @@ int main (int argc, char *argv[])
 	printf("cannot fork\n");
       } else if (pid == 0) {
 	// child
-	execv(c_args[0], c_args);
+	execve(c_args[0], c_args, environ);
 
 	// only when exec fails
 	printf("cannot exec\n");

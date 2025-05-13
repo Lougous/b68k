@@ -19,7 +19,10 @@ extern struct _IO_FILE * stderr;
 
 extern void __mem_init ();
 
-void __libc_init ()
+char **environ;
+int errno;
+
+void __libc_init (char *const envp[])
 {
   // stdin
   __stdin_struct.fd    = 0;
@@ -36,8 +39,15 @@ void __libc_init ()
   __stderr_struct.flags = O_WRONLY | O_DIRECT;
   stderr = &__stderr_struct;
 
+  // malloc
   __mem_init();
 
+  // environment
+  environ = (char **)envp;
+
+  // errno
+  errno = 0;
+  
   // rand
   srand(12345678);
 }

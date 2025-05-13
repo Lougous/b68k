@@ -2,6 +2,8 @@
 #ifndef _errno_h_
 #define _errno_h_
 
+extern int errno;		/* place where the error numbers go */
+
 #define	EPERM		1	/* Operation not permitted */
 #define	ENOENT          2	/* No such file or directory */
 #define	EACCESS		5

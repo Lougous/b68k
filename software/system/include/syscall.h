@@ -134,6 +134,7 @@ typedef struct {
 
 typedef struct {
   char **argv;  // NULL terminated list
+  char **envp;  // NULL terminated list
 } exec_msg_body_t;
 
 typedef struct {

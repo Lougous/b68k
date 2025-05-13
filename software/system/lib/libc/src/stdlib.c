@@ -11,7 +11,10 @@
 #include <unistd.h>
 #include <types.h>
 #include <syscall.h>
+#include <errno.h>
+#include <string.h>
 
+#include "trap.h"
 #include "trap.h"
 
 void exit(int status)
@@ -117,8 +120,23 @@ void __mem_init()
 
 #define ALIGN32(u32) (((u32)+3) & ~3)
 
+# if 0
+// debug tool
+void mem_stat()
+{
+  mem_chunk_head_t *pch = _ck_list;
+
+  while (pch) {
+    printf(" @%06Xh len=%u, %s\n", pch, pch->len & ~_CK_ALLOCATED, pch->len & _CK_ALLOCATED ? "allocated" : "free");
+    
+    pch = pch->next;
+  }  
+}
+#endif
+
 void *malloc(size_t size)
 {
+  
   if (! size) return 0;
   
   mem_chunk_head_t *pch = _ck_list;
@@ -202,6 +220,8 @@ void free(void *ptr)
       if (pch == ptr_h) {
 	mem_chunk_head_t *pnext = pch->next;
 	
+	pch->len &= ~_CK_ALLOCATED;
+	
 	if (pnext && (!(pnext->len & _CK_ALLOCATED))) {
 	  // next chunk not allocated, merge
 	  pch->len += pnext->len + sizeof(mem_chunk_head_t);
@@ -214,8 +234,6 @@ void free(void *ptr)
 	  prev->next = pch->next;
 	}
 
-	pch->len &= ~_CK_ALLOCATED;
-	
 	break;
       }
 
@@ -229,4 +247,189 @@ void free(void *ptr)
   }
 
   return;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// environment variables
+////////////////////////////////////////////////////////////////////////////////
+
+int setenv(const char *name, const char *value, int overwrite)
+{
+  // check name
+  if (! name) {
+    errno = EINVAL;
+    return -1;
+  }
+  
+  if (! *name) {
+    errno = EINVAL;
+    return -1;
+  }
+  
+  const char *pc = name;
+  
+  while (*pc) {
+    if (*pc++ == '=') {
+      errno = EINVAL;
+      return -1;
+    }
+  }
+
+  int n_len = (int)(pc - name);
+
+  // already exists ?
+  char **env_list = environ;
+  char **env_entry = 0;
+  short table_size = 0;
+
+  if (environ) {
+    while (*env_list) {
+      if (strncmp(*env_list, name, n_len) == 0) {
+	// already defined
+	if (overwrite) {
+	  env_entry = env_list;
+	} else {
+	  // do not change current value
+	  return 0;
+	}
+      }
+
+      env_list++;
+      table_size++;
+    }
+  }
+
+  int v_len = value ? strlen(value) : 0;
+
+  if (! env_entry) {
+    // does not exist yet
+    // TODO: use realloc when available !
+    // table size + one more + null pointer
+    char **new_table = (char **)malloc((table_size + 2)*sizeof(char *));
+
+    if (!new_table) {
+      errno = ENOMEM;
+      return -1;
+    }
+
+    if (table_size) {
+      memcpy(new_table, environ, table_size*sizeof(char *));
+    }
+
+    // +1 byte for = and +1 byte for terminating null char 
+    new_table[table_size] = (char *)malloc(n_len+1+v_len+1);
+
+    if (!new_table[table_size]) {
+      free(new_table);
+      errno = ENOMEM;
+      return -1;
+    }
+
+    new_table[table_size+1] = NULL;
+
+    env_entry = &new_table[table_size];
+
+    if (environ) {
+      free(environ);
+    }
+    
+    environ = new_table;
+  } else {
+    // already exists
+    char *new_env = (char *)malloc(n_len+1+v_len+1);
+
+    if (!new_env) {
+      errno = ENOMEM;
+      return -1;
+    }
+    
+    free(*env_entry);
+    *env_entry = new_env;
+  }
+
+  memcpy(*env_entry, name, n_len);
+  (*env_entry)[n_len]='=';
+
+  if (v_len) {
+    memcpy((*env_entry) + n_len + 1, value, v_len);
+  }
+
+  (*env_entry)[n_len+1+v_len] = 0;
+
+  return 0;
+}
+  
+int unsetenv(const char *name)
+{
+  // check name
+  if (! name) {
+    errno = EINVAL;
+    return -1;
+  }
+  
+  if (! *name) {
+    errno = EINVAL;
+    return -1;
+  }
+  
+  const char *pc = name;
+  
+  while (*pc) {
+    if (*pc++ == '=') {
+      errno = EINVAL;
+      return -1;
+    }
+  }
+
+  // walk environment list
+  char **env_list = environ;
+  int n_len = strlen(name);
+
+  while (*env_list) {
+    if (strncmp(*env_list, name, n_len) == 0) {
+      // found
+      break;
+    }
+
+    env_list++;
+  }
+
+  if (!(*env_list)) {
+    // not found: success
+    return 0;
+  }
+
+  // free matching varible, if any
+  if (*env_list) {
+    free(*env_list);
+  }
+
+  // remove from list
+  // note: no memory is freed despite removing one entry in the table
+  while (*env_list) {
+    *env_list = env_list[1];
+    env_list++;
+  }
+
+  // success
+  return 0;
+}
+
+char *getenv(const char *name)
+{
+  char **env_list = environ;
+
+  int n_len = strlen(name);
+
+  while (*env_list) {
+    if (strncmp(*env_list, name, n_len) == 0) {
+      // defined
+      return (*env_list) + n_len + 1;
+    }
+
+    env_list++;
+  }
+
+  // not found
+  return NULL;
 }

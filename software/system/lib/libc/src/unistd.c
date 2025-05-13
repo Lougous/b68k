@@ -104,11 +104,13 @@ int fork(void)
   return msg.body.s32;
 }
 
-int execv(const char *pathname, char *const argv[])
+int execve(const char *pathname, char *const argv[], char *const envp[])
 {
   // message to system task
-  volatile message_t msg = { .type = EXEC,
-			     .body.exec.argv = (char **)argv };
+  volatile message_t msg = {
+    .type = EXEC,
+    .body.exec.argv = (char **)argv,
+    .body.exec.envp = (char **)envp };
 
   u32_t rval;
 
@@ -117,7 +119,7 @@ int execv(const char *pathname, char *const argv[])
   // if this system call returns, something went wrong
   (void)rval;  // prevent warning
   
-  return -1;
+  return msg.body.s32;
 }
 
 int chdir(const char *path)

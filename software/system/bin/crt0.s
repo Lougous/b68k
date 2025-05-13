@@ -10,12 +10,12 @@
 	
 start:
 	/* Clear bss */
- 	lea.l	__s_bss,%a2
+ 	lea.l	__s_bss,%a3
 	move.l	#__e_bss,%d0
 1:
-	cmp.l	%d0,%a2
+	cmp.l	%d0,%a3
 	beq.s	2f
-	clr.b	(%a2)+
+	clr.b	(%a3)+
 	bra.s	1b
 2:
 	/* Move data to ram */
@@ -34,15 +34,17 @@ start:
 	/* setup stack */
 	lea.l  stktop,%sp
 
-	/* save registers setup by exec, will be arguments for main */
-	move.l	%a1,-(%sp)	/* argv */
-	move.l	%a0,-(%sp)	/* argc */
+	/* save registers setup by exec, will be arguments for main and __libc_init */
+	move.l	%a1,-(%sp)	/* argv (main) */
+	move.l	%a0,-(%sp)	/* argc (main) */
+	move.l	%a2,-(%sp)	/* envp (__libc_init) */
 
 	/* libc internal init
 	   among other things, this routine associates the streams stdin,
 	   stdout and stderr with integer file descriptors 0, 1 and 2,
 	   respectively */
 	jsr	__libc_init
+	add.l	#4,%sp
 
 	/* main */
 	jsr	main		/* Call the C-program */

@@ -17,20 +17,23 @@ SECTIONS
   .ram : {
     /* put the stack at the beginning of memory section, so that any 
     overflow would cause memory protection exception */
-    . = ALIGN(2);
+    . = ALIGN(4);
     *(.stack)
 
-    . = ALIGN(2);
+    . = ALIGN(4);
     *(.text)
     *(.note.gnu.build-id)
 
-    . = ALIGN(2);
+    . = ALIGN(4);
     *(.rodata)
     *(.rodata.*)
 
+    . = ALIGN(4);
     __s_bss = . ;
     *(.bss)
+    . = ALIGN(4);
     __e_bss = . ;
+    
     . = ALIGN(4);
     __s_heap = . ;
     *(.heap)

@@ -10,12 +10,13 @@
 	
 start:
 	/* Clear bss */
+	/* done 32-bits at a time : __s_bss and __e_bss must be aligned ! */
  	lea.l	__s_bss,%a3
 	move.l	#__e_bss,%d0
 1:
 	cmp.l	%d0,%a3
 	beq.s	2f
-	clr.b	(%a3)+
+	clr.l	(%a3)+
 	bra.s	1b
 2:
 	/* Move data to ram */
@@ -54,7 +55,7 @@ start:
 halt:
 	bra halt
 
-	.section .stack
+	.section .stack, "a"
 stkbot:
 	/* reserved data space for stack */
 	.space 512

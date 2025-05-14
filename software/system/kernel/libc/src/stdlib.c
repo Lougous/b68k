@@ -19,7 +19,7 @@ int atoi(const char *nptr)
 
 
   while (*nptr) {
-    if (*nptr > '0' && *nptr <= '9') {
+    if (*nptr >= '0' && *nptr <= '9') {
       val = val*10 + (int)(*nptr - '0');
       nptr++;
     } else {

@@ -26,7 +26,7 @@
 #define _K_MEM_RSVD_BLOCKS      64    // 128kiB code + 128kiB data
 
 /* blocks status */
-pid_t _blk_sts[K_MEM_BLOCK_COUNT - _K_MEM_RSVD_BLOCKS];
+pid_t _blk_sts[K_MEM_BLOCK_COUNT];
 
 u16_t _last_base;
 u16_t _last_msk;
@@ -84,19 +84,29 @@ mem_pa_t mem_realloc (pid_t pid, mem_pa_t addr, u32_t old_sz, u32_t new_sz, u16_
   if (ok) {
     mem_pa_t new_addr = blk << _K_MEM_BLOCK_SIZE_BITS;
     
-    if (! addr) {
-      // first allocation
-      for (sblk = blk; sblk < blk + new_cnt; sblk++) {
-	_blk_sts[sblk] = pid;
-      }
-    } else if (addr != new_addr) {
+    if (addr && (addr != new_addr)) {
       // reallocation and need to move data
       memcpy((void *)new_addr,
 	     (void *)addr,
 	     old_sz);
+
+      // update map : clear old ones
+      u16_t old_cnt = _mem_blocks(old_sz);
+      sblk = addr >> _K_MEM_BLOCK_SIZE_BITS;  // 1st old block
+      
+      for (blk = 0; blk < old_cnt; blk ++) {
+	_blk_sts[sblk+blk] = 0;
+      }
     }
 
-    K_PRINTF(3, "PID %i: base address %Xh, size %ukiB\n", pid, new_addr, (new_cnt << _K_MEM_BLOCK_SIZE_BITS) >> 10);
+    // update map : set new ones
+    sblk = new_addr >> _K_MEM_BLOCK_SIZE_BITS;  // 1st new block
+      
+    for (blk = 0; blk < new_cnt; blk++) {
+      _blk_sts[sblk+blk] = pid;
+    }
+
+    K_PRINTF(3, "PID %i: base address %Xh, size %ukiB (%u)\n", pid, new_addr, (new_cnt << _K_MEM_BLOCK_SIZE_BITS) >> 10, new_sz);
     
     return new_addr;
   }
@@ -148,4 +158,19 @@ void mem_setup_mmu (mem_pa_t addr, u32_t sz) {
   //    _last_msk = mask;
   //  }
 
+}
+
+void mem_stat (struct memstat *ms) {
+  ms->bsize    = _K_MEM_BLOCK_SIZE;
+  ms->total    = K_MEM_BLOCK_COUNT;
+  ms->reserved = _K_MEM_RSVD_BLOCKS;
+  
+  u16_t blk;
+  u16_t used = 0;
+
+  for (blk = _K_MEM_RSVD_BLOCKS; blk < K_MEM_BLOCK_COUNT; blk++) {
+    if (_blk_sts[blk]) used++;
+  }
+
+  ms->used = used;
 }

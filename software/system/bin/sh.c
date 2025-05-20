@@ -23,8 +23,8 @@
 char line[BUFLEN];
 char *c_args[MAX_ARGS];
 
-char cpath[PATH_MAX+1];  // current path
-char opath[PATH_MAX+1];  // old path
+//char cpath[PATH_MAX+1];  // current path
+//char opath[PATH_MAX+1];  // old path
 
 static void _cut_words (char *cline)
 {
@@ -81,6 +81,7 @@ static short _subpathlen (char *path)
 static short _build_path(char *dst, char *path)
 {
   if (!path) path = "/";  // TODO: use $HOME
+  char *cpath = getenv("PWD");
   char *wptr;
   short avail;
 
@@ -168,7 +169,7 @@ static short _build_path(char *dst, char *path)
 
 int main (int argc, char *argv[])
 {
-  strcpy(cpath, "/");
+  setenv("PWD", "/", 1);
 
   while (1) {
     // TODO: use PS1 environment variable
@@ -218,14 +219,21 @@ int main (int argc, char *argv[])
 
 	if (c_args[1] && (c_args[1][0] == '-') && (c_args[1][1] == 0)) {
 	  // cd -
+	  char *opath = getenv("OLDPWD");
+
+	  if (! opath) {
+	    printf("sh: cd: OLDPWD not set\n");
+	    continue;
+	  }
+	  
 	  if (chdir(opath) < 0) {
 	    printf("sh: cd: %s: No such directory\n", opath);
 	    continue;
 	  }
 
-	  strcpy(path, cpath);
-	  strcpy(cpath, opath);
-	  strcpy(opath, path);
+	  strcpy(path, getenv("PWD"));
+	  setenv("PWD", opath, 1);
+	  setenv("OLDPWD", path, 1);
 	} else {
 	  if (_build_path(path, c_args[1]) < 0) {
 	    printf("sh: cd: %s: Path too long\n", c_args[1]);
@@ -237,16 +245,15 @@ int main (int argc, char *argv[])
 	    continue;
 	  }
 
-	  strcpy(opath, cpath);
-	  strncpy(cpath, path, PATH_MAX);
-	  cpath[PATH_MAX] = 0;  // safe guard
+	  setenv("OLDPWD", getenv("PWD"), 1);
+	  setenv("PWD", path, 1);
 	}
 
 	continue;
       }
 
       else if (strcmp(c_args[0], "pwd") == 0) {
-	printf("%s\n", cpath);  // TODO use $PWD
+	printf("%s\n", getenv("PWD"));  // TODO use $PWD
 	continue;
       }
 	

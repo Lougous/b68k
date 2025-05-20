@@ -4,6 +4,7 @@
 **
 ** System/binaries - program entry
 */
+#include "limits.h"
 
 	.text
 	.global	start
@@ -57,8 +58,10 @@ halt:
 
 	.section .stack, "a"
 stkbot:
-	/* reserved data space for stack */
-	.space 512
+	/* reserved data space for stack - init step */
+	.space 64
+stkinit:
+	.space ARG_MAX
 stktop:
 
 	.section .heap

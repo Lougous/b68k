@@ -19,6 +19,9 @@
 #define K_HAS_AV_BOARD
 #define K_HAS_IO_BOARD
 
+/* file name for init process executable */
+#define K_INIT_FILENAME  "/init"
+
 /* kernel space stack size */
 #define K_STACK_BYTES  0x2000
 

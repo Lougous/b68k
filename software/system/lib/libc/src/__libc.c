@@ -43,6 +43,7 @@ void __libc_init (char *const envp[])
   __mem_init();
 
   // environment
+  // TODO : copy to allocated memory so that environment variable could be freed
   environ = (char **)envp;
 
   // errno

@@ -8,7 +8,7 @@
 XCROOT=m68k-linux-gnu-
 
 AS=${XCROOT}gcc
-ASFLAGS=-march=68000 -c -x assembler-with-cpp
+ASFLAGS=-march=68000 -c -x assembler-with-cpp -I../include
 
 CC=${XCROOT}gcc
 CFLAGS=-Wall -m68000 -mstrict-align -fno-builtin -O1 -nostdlib \
@@ -21,7 +21,7 @@ LDLIBS=-lc -lgcc
 OBJCOPY=${XCROOT}objcopy
 OBJDUMP=${XCROOT}objdump
 
-BIN=ls sh cat init
+BIN=ls sh cat init test
 
 # entries
 all:	libc crt0.o ${BIN}
@@ -34,6 +34,7 @@ ls:	ls.o
 sh:	sh.o
 cat:	cat.o
 init:	init.o 
+test:	test.o 
 
 clean:
 	make -C ../lib/libc clean

@@ -64,7 +64,7 @@ stkinit:
 	.space ARG_MAX
 stktop:
 
-	.section .heap
+	.section .heap, "a"
 	/* reserved data space for heap */
 	.space 128
 

@@ -12,10 +12,11 @@ ASFLAGS=-march=68000 -c -x assembler-with-cpp -I../include
 
 CC=${XCROOT}gcc
 CFLAGS=-Wall -m68000 -mstrict-align -fno-builtin -O1 -nostdlib \
+-fdata-sections -ffunction-sections \
 -I../lib/libc/include -Iinclude -I../include -I.
 
 LD=${XCROOT}ld
-LDFLAGS=-T crt0.ld -nostdlib -Wl,--build-id=none -L../lib/libc -L/usr/lib/gcc-cross/m68k-linux-gnu/9 crt0.o 
+LDFLAGS=-T crt0.ld -nostdlib -Wl,--build-id=none -Wl,--gc-sections -L../lib/libc -L/usr/lib/gcc-cross/m68k-linux-gnu/9 crt0.o 
 LDLIBS=-lc -lgcc
 
 OBJCOPY=${XCROOT}objcopy

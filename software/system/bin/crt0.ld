@@ -14,30 +14,42 @@ ram (wxa)  : org = 0x00000000, l = 64K
 
 SECTIONS
 {
-  .ram : {
+  .stack (NOLOAD) : {
     /* put the stack at the beginning of memory section, so that any 
     overflow would cause memory protection exception */
     . = ALIGN(4);
     *(.stack)
+  } > ram
 
+  .text : {
     . = ALIGN(4);
-    *(.text)
+    *(.text .text.*)
     *(.note.gnu.build-id)
+  } > ram
 
+  .rodata : {
     . = ALIGN(4);
-    *(.rodata)
-    *(.rodata.*)
+    *(.rodata .rodata.*)
+  } > ram
 
+  .bss : {
     . = ALIGN(4);
     __s_bss = . ;
-    *(.bss)
+    *(.bss .bss.*)
     . = ALIGN(4);
     __e_bss = . ;
-    
+  } > ram
+
+  .heap (NOLOAD) : {
     . = ALIGN(4);
     __s_heap = . ;
-    *(.heap)
+    KEEP(*(.heap .heap.*))
     __e_heap = . ;
   } > ram
+    
+  /DISCARD/ : {
+    /* *(.eh_frame);*/
+    *(.comment);
+  }
 }
 

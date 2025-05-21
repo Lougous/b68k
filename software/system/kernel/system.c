@@ -150,7 +150,7 @@ const char * const _root_boot_list[] = {
 //  envpp       : environment offset table, NULL terminated
 //  len         : overall space used by argument/environment (including tables)
 // offsets base from  _k_exec_buf
-static s32_t _copy_argv_envp (pid_t from, exec_msg_body_t *exec_arg, u16_t *envoffp, u16_t *lenp)
+static s32_t _copy_argv_envp (pid_t from, exec_msg_body_t *exec_arg, u16_t *lenp, u16_t *envoffp)
 {
   // build argument pointer table, with physical addresses into calling process
   char **va_argv = exec_arg->argv;
@@ -237,12 +237,13 @@ static s32_t _copy_argv_envp (pid_t from, exec_msg_body_t *exec_arg, u16_t *envo
 
   len = (len + 3) & ~3;  // align to 32-bits
 
-  *envoffp = len;
   const char **pa_envp = (const char **)(((char *)_k_exec_buf) + len);
   const char **envp = pa_envp;
   s16_t envc = 0;
 
   if (va_envp) {
+
+    *envoffp = len;
 	  
     while (1) {
 
@@ -284,7 +285,7 @@ static s32_t _copy_argv_envp (pid_t from, exec_msg_body_t *exec_arg, u16_t *envo
 	return -E2BIG;
       }	      
     }
-
+    
     K_PRINTF(3, "system: EXEC envc=%i\n", envc);
 	    
     // copy environment strings to kernel space
@@ -318,8 +319,8 @@ static s32_t _copy_argv_envp (pid_t from, exec_msg_body_t *exec_arg, u16_t *envo
     }
   } else {
     // no environment
-    *pa_envp++ = NULL;
-    len += sizeof(char *);
+    K_PRINTF(3, "system: EXEC no envp\n");
+    *envoffp = 0;
   }
 
   *lenp = len;
@@ -470,9 +471,9 @@ void system_task (void)
       .envpnp = NULL
     };
 
-    const u16_t envoff = offsetof(struct argenv, envpnp);
+    //const u16_t envoff = offsetof(struct argenv, envpnp);
       
-    if (proc_exec(init_pid, (mem_pa_t)&argenv, sizeof(struct argenv), envoff) < 0) {
+    if (proc_exec(init_pid, (mem_pa_t)&argenv, sizeof(struct argenv), 0 /* no env */) < 0) {
       K_PRINTF(0, "unable to load '%s'\n", K_INIT_FILENAME);
     } else {
       // wake up init process
@@ -578,7 +579,7 @@ void system_task (void)
 	  u16_t len = 0;
 	  u16_t envoff = 0;
 
-	  s32_t sts = _copy_argv_envp(from, &msg.body.exec, &envoff, &len);
+	  s32_t sts = _copy_argv_envp(from, &msg.body.exec, &len, &envoff);
 	  
 	  if (sts < 0) {
 	    K_PRINTF(3, "system: PID-%i: EXEC  _copy_argv_envp failed\n", from);

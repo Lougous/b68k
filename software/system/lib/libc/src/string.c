@@ -102,6 +102,10 @@ char *strdup(const char *s)
   
   i = strlen(s) + 1;
   s1 = malloc(i);
-  strncpy(s1, s, i);
+
+  if (s1) {
+    strncpy(s1, s, i);
+  }
+
   return s1;
 }

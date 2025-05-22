@@ -4,20 +4,18 @@
 **
 ** System/binaries - program entry
 */
-#include "limits.h"
-
 	.text
 	.global	start
 	
 start:
 	/* Clear bss */
 	/* done 32-bits at a time : __s_bss and __e_bss must be aligned ! */
- 	lea.l	__s_bss,%a3
+ 	lea.l	__s_bss,%a4
 	move.l	#__e_bss,%d0
 1:
-	cmp.l	%d0,%a3
+	cmp.l	%d0,%a4
 	beq.s	2f
-	clr.l	(%a3)+
+	clr.l	(%a4)+
 	bra.s	1b
 2:
 	/* Move data to ram */
@@ -39,6 +37,7 @@ start:
 	/* save registers setup by exec, will be arguments for main and __libc_init */
 	move.l	%a1,-(%sp)	/* argv (main) */
 	move.l	%a0,-(%sp)	/* argc (main) */
+	move.l	%a3,-(%sp)	/* envlen (__libc_init) */
 	move.l	%a2,-(%sp)	/* envp (__libc_init) */
 
 	/* libc internal init
@@ -46,7 +45,10 @@ start:
 	   stdout and stderr with integer file descriptors 0, 1 and 2,
 	   respectively */
 	jsr	__libc_init
-	add.l	#4,%sp
+
+	/* init environment */
+	jsr	__libc_env_init   /* (char *envp[], int envlen) */
+	add.l	#8,%sp
 
 	/* main */
 	jsr	main		/* Call the C-program */
@@ -58,13 +60,11 @@ halt:
 
 	.section .stack, "a"
 stkbot:
-	/* reserved data space for stack - init step */
-	.space 64
-stkinit:
-	.space ARG_MAX
+	/* reserved data space for stack */
+	.space 1024
 stktop:
 
 	.section .heap, "a"
 	/* reserved data space for heap */
-	.space 128
+	.space 256
 

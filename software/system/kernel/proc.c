@@ -499,6 +499,7 @@ int proc_exec(pid_t pid, mem_pa_t argenvp, u16_t argenvlen, u16_t envoff)
   //  K_PRINTF(3, "%s: %u program entries:\n", argv[0], e_phnum);
 
   struct proc_desc_t *pp = &_proc_table[pid].d;
+  u32_t used_mem_hi = 0;
 
   // TODO: do in two steps (loops), first to allocate the memory and the second
   // to load sections. So that in case of insufficent memory the process can
@@ -516,10 +517,10 @@ int proc_exec(pid_t pid, mem_pa_t argenvp, u16_t argenvlen, u16_t envoff)
     u32_t p_filesz = *((u32_t *)&pa_buf[16]);  // size in file
     u32_t p_memsz  = *((u32_t *)&pa_buf[20]);  // size in memory
 
-    //    K_PRINTF(3, " #%u: type %x, @%Xh +%Xh (@%Xh +%Xh)\n", ph, p_type, p_vaddr, p_memsz, p_offset, p_filesz);
+    K_PRINTF(3, " #%u: type %x, @%Xh +%Xh (@%Xh +%Xh)\n", ph, p_type, p_vaddr, p_memsz, p_offset, p_filesz);
 
-   if ((p_vaddr + p_memsz) > pp->mem_sz) {
-      /* need to get more memory */
+    if ((p_vaddr + p_memsz) > pp->mem_sz) {
+      // need to get more memory
       mem_pa_t new_ad = mem_realloc(pid, pp->mem_ad, pp->mem_sz, p_vaddr + p_memsz, 0);
       
       if (new_ad == 0) {
@@ -530,20 +531,22 @@ int proc_exec(pid_t pid, mem_pa_t argenvp, u16_t argenvlen, u16_t envoff)
       pp->mem_ad = new_ad;
       pp->mem_sz = ALIGN32(p_vaddr + p_memsz);
     }
+
+    if ((p_vaddr + p_memsz) > used_mem_hi) {
+      used_mem_hi = ALIGN32(p_vaddr + p_memsz);
+    }
       
-   if (p_filesz == 0) {
+    if (p_filesz == 0) {
       // discard empty segments
       continue;
     }
     
     if (p_type == 1) {
-      /* loadable segment */
+      // loadable segment
       sendreceive_vfs_lseek(&msg, fd, p_offset, SEEK_SET);
 
       while (p_filesz) {
 	u32_t len = p_filesz > sizeof(pa_buf) ? sizeof(pa_buf) : p_filesz;
-
-	//printf("ld @%xh - %u\n", p_vaddr, len);
 
 	if (sendreceive_vfs_read(&msg, fd, &pa_buf[0], len) != len) goto exit_error;
 
@@ -555,9 +558,11 @@ int proc_exec(pid_t pid, mem_pa_t argenvp, u16_t argenvlen, u16_t envoff)
     }
   }
 
-  /* setup arguments/environment memory space */
-  mem_va_t va_argenv = ALIGN32(pp->mem_sz);
-  u32_t    new_size = ALIGN32(pp->mem_sz) + ALIGN32(argenvlen);
+  // setup arguments/environment memory space
+  mem_va_t va_argenv = used_mem_hi;
+  u32_t    new_size = used_mem_hi + ALIGN32(argenvlen);
+  
+  // realloc to increase or reduce space !
   mem_pa_t new_ad   = mem_realloc(pid, pp->mem_ad, pp->mem_sz, new_size, 0);
   pp->mem_ad = new_ad;
   pp->mem_sz = new_size;
@@ -598,17 +603,20 @@ int proc_exec(pid_t pid, mem_pa_t argenvp, u16_t argenvlen, u16_t envoff)
   // process setup
   strncpy(pp->name, argv0, K_PROC_NAME_MAX_LEN-1);
 
-  K_PRINTF(3, "EXEC: PID-%u: argc=%u\n", pid, argc);
-  K_PRINTF(3, "EXEC: PID-%u: argv=%Xh\n", pid, (u32_t)va_argenv);
-  K_PRINTF(3, "EXEC: PID-%u: envp=%Xh\n", pid, (u32_t)va_envp);
   
   pp->a[0] = argc;
   pp->a[1] = (u32_t)va_argenv;
   pp->a[2] = (u32_t)va_envp;
+  pp->a[3] = envoff ? (u32_t)(argenvlen - envoff) : 0;
   pp->pc = e_entry;
   /* invalid SP, will do address error if not properly initialized by process itself */
   pp->a[7] = 0xffffffff;
   
+  K_PRINTF(3, "EXEC: PID-%u: argc=%u\n", pid, pp->a[0]);
+  K_PRINTF(3, "EXEC: PID-%u: argv=%Xh\n", pid, pp->a[1]);
+  K_PRINTF(3, "EXEC: PID-%u: envp=%Xh\n", pid, pp->a[2]);
+  K_PRINTF(3, "EXEC: PID-%u: envlen=%u\n", pid, pp->a[3]);
+
   // TODO: check e_entry valid ?
 
   //proc_stat(pid);

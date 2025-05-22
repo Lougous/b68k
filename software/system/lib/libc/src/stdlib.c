@@ -110,6 +110,8 @@ mem_chunk_head_t *_ck_list;
 extern char __s_heap;
 extern char __e_heap;
 
+#define ALIGN32(u32) (((u32)+3) & ~3)
+
 void __mem_init()
 {
   _ck_list = (mem_chunk_head_t *)&__s_heap;
@@ -117,7 +119,42 @@ void __mem_init()
   _ck_list->next = 0;
 }  
 
-#define ALIGN32(u32) (((u32)+3) & ~3)
+void __mem_add_chunk(void *chkp, int len)
+{
+  // align start address to 32-bits
+  intptr_t startp = (intptr_t)chkp;
+
+  while (startp & 3) {
+    startp++;
+    len--;
+  }
+
+  // align (round down) length
+  len = len & ~3;
+  
+  // smallest aligned chunk size is 4 bytes
+  if (len >= (sizeof(mem_chunk_head_t)+4)) {
+    mem_chunk_head_t *new_list = (mem_chunk_head_t *)chkp;
+    new_list->len = len-sizeof(mem_chunk_head_t);
+    new_list->next = _ck_list;
+
+    _ck_list = new_list;
+  }
+}
+  
+int __mem_free()
+{
+  mem_chunk_head_t *pch = _ck_list;
+  int free = 0;
+
+  while (pch) {
+    if (! (pch->len & _CK_ALLOCATED)) free += pch->len;
+    
+    pch = pch->next;
+  }
+
+  return free;
+}
 
 # if 0
 // debug tool
@@ -204,8 +241,10 @@ void *malloc(size_t size)
 
     return ((void *)new_ch) + sizeof(mem_chunk_head_t);
   }
-  
-  return 0;
+
+  // allocation failed
+  errno = ENOMEM;
+  return NULL;
 }
 
 void free(void *ptr)

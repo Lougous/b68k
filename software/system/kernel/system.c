@@ -146,10 +146,27 @@ const char * const _root_boot_list[] = {
 
 // copy argument offset table, environment offset table, argument strings and
 // environment strings in a continous space starting at _k_exec_buf
-//   _k_exec_buf: argument offset table, NULL terminated
-//  envpp       : environment offset table, NULL terminated
-//  len         : overall space used by argument/environment (including tables)
-// offsets base from  _k_exec_buf
+//
+// output:
+//   _k_exec_buf + 0 :
+//        arguments offset table, NULL terminated
+//                       
+//   _k_exec_buf + (argc+1)*4 :
+//        arguments strings
+//
+//   _k_exec_buf + *envoffp :
+//        environments offset table, NULL terminated. offset to actual string,
+//        not ist header (see below)
+//
+//   _k_exec_buf + *envoffp + (envc+1)*4:
+//        arguments strings
+//
+// arguments and environments offsets are in bytes from _k_exec_buf start. will
+// be replaced by actual addresses when copied into process image loaded by
+// proc_exec
+//
+// *len : overall space used by argument/environment (including tables)
+//
 static s32_t _copy_argv_envp (pid_t from, exec_msg_body_t *exec_arg, u16_t *lenp, u16_t *envoffp)
 {
   // build argument pointer table, with physical addresses into calling process

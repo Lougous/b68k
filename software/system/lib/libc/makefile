@@ -11,7 +11,9 @@ AS=${XCROOT}gcc
 ASFLAGS=-march=68000 -c -x assembler-with-cpp
 
 CC=${XCROOT}gcc
-CFLAGS=-Wall -m68000 -mstrict-align -fno-builtin -O1 -nostdlib -Iinclude -I../../include -I. -c
+CFLAGS=-Wall -m68000 -mstrict-align -fno-builtin -O1 -nostdlib \
+-fdata-sections -ffunction-sections \
+-Iinclude -I../../include -I. -c
 
 LD=${XCROOT}ld
 LDFLAGS=-nostdlib -L../lib/libc -L/usr/lib/gcc-cross/m68k-linux-gnu/9 -lc -lgcc

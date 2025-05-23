@@ -16,8 +16,10 @@ ssize_t write(int fd, const void *buf, size_t count);
 
 void _exit(int status);
 int fork(void);
-int execv(const char *pathname, char *const argv[]);
+int execve(const char *pathname, char *const argv[], char *const envp[]);
 
 int chdir(const char *path);
+
+extern char **environ;
 
 #endif /* _unistd_h_ */

@@ -4,18 +4,18 @@
 **
 ** System/binaries - program entry
 */
-
 	.text
 	.global	start
 	
 start:
 	/* Clear bss */
- 	lea.l	__s_bss,%a2
+	/* done 32-bits at a time : __s_bss and __e_bss must be aligned ! */
+ 	lea.l	__s_bss,%a4
 	move.l	#__e_bss,%d0
 1:
-	cmp.l	%d0,%a2
+	cmp.l	%d0,%a4
 	beq.s	2f
-	clr.b	(%a2)+
+	clr.l	(%a4)+
 	bra.s	1b
 2:
 	/* Move data to ram */
@@ -34,15 +34,21 @@ start:
 	/* setup stack */
 	lea.l  stktop,%sp
 
-	/* save registers setup by exec, will be arguments for main */
-	move.l	%a1,-(%sp)	/* argv */
-	move.l	%a0,-(%sp)	/* argc */
+	/* save registers setup by exec, will be arguments for main and __libc_init */
+	move.l	%a1,-(%sp)	/* argv (main) */
+	move.l	%a0,-(%sp)	/* argc (main) */
+	move.l	%a3,-(%sp)	/* envlen (__libc_init) */
+	move.l	%a2,-(%sp)	/* envp (__libc_init) */
 
 	/* libc internal init
 	   among other things, this routine associates the streams stdin,
 	   stdout and stderr with integer file descriptors 0, 1 and 2,
 	   respectively */
 	jsr	__libc_init
+
+	/* init environment */
+	jsr	__libc_env_init   /* (char *envp[], int envlen) */
+	add.l	#8,%sp
 
 	/* main */
 	jsr	main		/* Call the C-program */
@@ -52,13 +58,13 @@ start:
 halt:
 	bra halt
 
-	.section .stack
+	.section .stack, "a"
 stkbot:
 	/* reserved data space for stack */
-	.space 512
+	.space 1024
 stktop:
 
-	.section .heap
+	.section .heap, "a"
 	/* reserved data space for heap */
-	.space 128
+	.space 256
 

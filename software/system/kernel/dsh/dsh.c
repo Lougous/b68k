@@ -127,6 +127,20 @@ int sig (int argc, char *argv[])
 
   return 0;
 }
+
+int free (int argc, char *argv[])
+{
+  struct memstat ms;
+  mem_stat (&ms);
+  
+  printf("block size : %u Bytes\n", ms.bsize);
+  printf("total      : %u\n", ms.total);
+  printf("reserved   : %u\n", ms.reserved);
+  printf("used       : %u\n", ms.used);
+  printf("\n%u Bytes free\n", (u32_t)(ms.total-(ms.reserved+ms.used))*(u32_t)ms.bsize);
+
+  return 0;
+}
   
 typedef struct {
   const char *name;
@@ -146,6 +160,7 @@ const cmd_entry_t cmd_list[] = {
   { "mfpw", mfpw },
   { "mfpr", mfpr },
   { "sig", sig },
+  { "free", free },
   { 0, 0 }
 };
 
@@ -164,33 +179,36 @@ int help(int argc, char *argv[]) {
   return 0;
 }
 
-char buf[BUF_LEN];
+struct args {
+  char *argv[MAX_ARGC];  // offset from the start of the structure
+  char buf[BUF_LEN];
+} _dsh_args;
 
-void dsh_do (char *cline)
+void dsh_do ()
 {
   int argc;
-  static char *argv[MAX_ARGC];
   int in;
+  char *pc = _dsh_args.buf;
  
   /* decode command: cuts words */
   argc = 0;
   in = 0;
 
-  while (*cline) {
-    if (in == 0 && *cline != ' ') {
+  while (*pc) {
+    if (in == 0 && *pc != ' ') {
       // start of word
       in = 1;
-      argv[argc++] = cline;
+      _dsh_args.argv[argc++] = pc;
 
       // wont'be able to cut more
       if (argc == MAX_ARGC) break;
-    } else if (in == 1 && *cline == ' ') {
+    } else if (in == 1 && *pc == ' ') {
       // end of word
-      *cline = 0;
+      *pc = 0;
       in = 0;
     }
 
-    cline++;
+    pc++;
   }
     
   /* check 1st word (command name) with build-in commands */
@@ -198,8 +216,8 @@ void dsh_do (char *cline)
     int p = 0;
     
     while (cmd_list[p].name) {
-      if (strcmp(cmd_list[p].name, argv[0]) == 0) {
-	cmd_list[p].ptr(argc, argv);
+      if (strcmp(cmd_list[p].name, _dsh_args.argv[0]) == 0) {
+	cmd_list[p].ptr(argc, _dsh_args.argv);
 	break;
       }
       
@@ -208,17 +226,23 @@ void dsh_do (char *cline)
     
     if (! cmd_list[p].name) {
       /* not found, try to find executable */
-      pid_t pid = proc_create_init(argv[0], 0);
+      pid_t pid = proc_create_init(_dsh_args.argv[0], 0);
 
-      int ret = proc_exec(pid, argc, (const char **)argv, 0, BUF_LEN);
+      if (pid == PROC_PID_NONE) {
+	printf("%s: couldn't createt process\n", _dsh_args.argv[0]);
+	return;
+      }
+
+      // TODO: change argv char pointers to offsets !
+      int ret = proc_exec(pid, (mem_pa_t)&_dsh_args, sizeof(_dsh_args), 0 /* no env */);
 
       if (ret == 0) {
-	printf("add process '%s' (PID %d)\n", argv[0], pid);
+	printf("add process '%s' (PID %d)\n", _dsh_args.argv[0], pid);
 
 /* back to dsh */
       } else {
 	proc_kill(pid);
-	printf("%s: command not found\n",  argv[0]);
+	printf("%s: command not found\n",  _dsh_args.argv[0]);
       }
     }
     
@@ -267,6 +291,8 @@ void dsh (void)  {
   
   printf(PROMPT);
 
+  char *buf = _dsh_args.buf;
+  
   buf[0] = 0;
   
   while(1) {
@@ -279,7 +305,7 @@ void dsh (void)  {
 	buf[pos] = 0;
 	putchar('\n');
 
-	dsh_do(&buf[0]);
+	dsh_do();
 		    
 	buf[0] = 0;
 	pos = 0;
@@ -294,8 +320,10 @@ void dsh (void)  {
 	break;
 
       default:
-	putchar(c);
-	buf[pos++] = c;
+	if (pos < sizeof(_dsh_args.buf)) {
+	  putchar(c);
+	  buf[pos++] = c;
+	}
 	break;
       }
   }

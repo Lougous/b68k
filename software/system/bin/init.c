@@ -44,7 +44,7 @@ int main (int argc, char *argv[])
       // start shell user process
       char *args[] = { "/sh", (char*)0 };
 
-      execv(args[0], args);
+      execve(args[0], args, (char**)0);
 
       // only when exec fails
       printf("init: child: failed to exec\n");

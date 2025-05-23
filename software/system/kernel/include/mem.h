@@ -20,4 +20,13 @@ extern mem_pa_t mem_realloc (pid_t pid, mem_pa_t addr, u32_t old_sz, u32_t new_s
 extern void mem_free(mem_pa_t addr, u32_t sz);
 extern void mem_setup_mmu (mem_pa_t addr, u32_t sz);
 
+struct memstat {
+  u16_t bsize;
+  u16_t total;
+  u16_t reserved;
+  u16_t used;
+};
+
+extern void mem_stat (struct memstat *ms);
+
 #endif /* _mem_h_ */

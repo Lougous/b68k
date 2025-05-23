@@ -10,7 +10,7 @@
 
 /* kernel version */
 #define K_VERSION_MAJOR  0
-#define K_VERSION_MINOR  19
+#define K_VERSION_MINOR  20
 
 /* kernel debug / verbose level */
 #define K_DEBUG_LEVEL  1
@@ -18,6 +18,9 @@
 /* hardware configuration */
 #define K_HAS_AV_BOARD
 #define K_HAS_IO_BOARD
+
+/* file name for init process executable */
+#define K_INIT_FILENAME  "/init"
 
 /* kernel space stack size */
 #define K_STACK_BYTES  0x2000

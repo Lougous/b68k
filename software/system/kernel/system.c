@@ -10,6 +10,7 @@
 #include <stddef.h>
 #include <string.h>
 #include <syscall.h>
+#include <errno.h>
 
 #include "config.h"
 #include "mem.h"
@@ -125,9 +126,8 @@ extern void vfs_task (void);
 #define _VFS_STACK_SIZE  1024
 u16_t vfs_stack[_VFS_STACK_SIZE/2];
 
-char _k_argv_buf[K_PROC_ARGS_SIZE];
-
-
+// buffer to store arguments and environment of the process that call exec
+u32_t _k_exec_buf[(K_PROC_ARGS_SIZE+3) / 4];  // TODO: ARG_MAX in limits.h
 
 // root file system boot list (ordered)
 const char * const _root_boot_list[] = {
@@ -143,6 +143,207 @@ const char * const _root_boot_list[] = {
   "serial", "rfs",
   0
 };
+
+// copy argument offset table, environment offset table, argument strings and
+// environment strings in a continous space starting at _k_exec_buf
+//
+// output:
+//   _k_exec_buf + 0 :
+//        arguments offset table, NULL terminated
+//                       
+//   _k_exec_buf + (argc+1)*4 :
+//        arguments strings
+//
+//   _k_exec_buf + *envoffp :
+//        environments offset table, NULL terminated. offset to actual string,
+//        not ist header (see below)
+//
+//   _k_exec_buf + *envoffp + (envc+1)*4:
+//        arguments strings
+//
+// arguments and environments offsets are in bytes from _k_exec_buf start. will
+// be replaced by actual addresses when copied into process image loaded by
+// proc_exec
+//
+// *len : overall space used by argument/environment (including tables)
+//
+static s32_t _copy_argv_envp (pid_t from, exec_msg_body_t *exec_arg, u16_t *lenp, u16_t *envoffp)
+{
+  // build argument pointer table, with physical addresses into calling process
+  char **va_argv = exec_arg->argv;
+	  
+  const char **pa_argv = (const char **)_k_exec_buf;
+  s16_t argc = 0;
+
+  while (1) {
+
+    const char **pa_parg = (const char **)va_to_pa(from, (mem_va_t)va_argv, sizeof(const char *));
+    if (!pa_parg) {
+      /* exec failed */
+      K_PRINTF(3, "system: EXEC bad VA(1): %Xh\n", (mem_va_t)va_argv);
+      return -EFAULT;
+    }
+
+    K_PRINTF(3, "system: EXEC argv PA: %Xh\n", (mem_pa_t)pa_argv);
+
+    va_argv++;
+
+    const char *va_arg = *pa_parg;
+
+    if (va_arg == NULL) {
+      // last argument
+      *pa_argv++ = NULL;
+      break;
+    }
+
+    const char *pa_arg = (const char *)va_to_pa(from, (mem_va_t)va_arg, sizeof(const char *));
+
+    if (!pa_arg) {
+      /* exec failed */
+      K_PRINTF(3, "system: EXEC bad VA(2): %Xh\n", (mem_va_t)va_arg);
+      return -EFAULT;
+    }
+
+    *pa_argv++ = pa_arg;
+
+    argc++;
+
+    if (argc == sizeof(_k_exec_buf)/4) {
+      K_PRINTF(3, "system: EXEC out of memory (argc)\n");
+      return -E2BIG;
+    }	      
+  }
+
+  K_PRINTF(3, "system: EXEC argc=%i\n", argc);
+	    
+  // copy argument strings to kernel space
+  u16_t len = (argc+1)*sizeof(char *);
+  pa_argv = (const char **)_k_exec_buf;
+
+  while (1) {
+
+    const char *pa_arg = *pa_argv;
+
+    if (pa_arg == NULL) {
+      // last argument
+      break;
+    }
+	    
+    u16_t alen = strlen(pa_arg);
+
+    if (len + alen < sizeof(_k_exec_buf)) {
+      char *pa_k_arg = ((char *)_k_exec_buf) + len;
+      K_PRINTF(3, "system: EXEC arg +%04Xh '%s'\n", len, pa_arg);
+	      
+      strcpy(pa_k_arg, pa_arg);
+      // replace in process argument address by kernel storage argument address offset
+      *pa_argv++ = (const char *)(u32_t)len;
+
+      len += alen + 1;
+    } else {
+      // buffer overflow
+      // TODO: discard additional arguments or discard whole exec ?
+      K_PRINTF(3, "system: EXEC argument E2BIG\n");
+      return -E2BIG;
+    }
+  }
+	    
+  // build environment pointer table, with physical addresses into calling process
+  // same as for arguments
+  char **va_envp = exec_arg->envp;
+
+  len = (len + 3) & ~3;  // align to 32-bits
+
+  const char **pa_envp = (const char **)(((char *)_k_exec_buf) + len);
+  const char **envp = pa_envp;
+  s16_t envc = 0;
+
+  if (va_envp) {
+
+    *envoffp = len;
+	  
+    while (1) {
+
+      const char **pa_penv = (const char **)va_to_pa(from, (mem_va_t)va_envp, sizeof(const char *));
+      if (!pa_penv) {
+	/* exec failed */
+	K_PRINTF(3, "system: EXEC bad VA(1): %Xh\n", (mem_va_t)va_envp);
+	return -EFAULT;
+      }
+
+      K_PRINTF(3, "system: EXEC envp PA: %Xh\n", (mem_pa_t)pa_envp);
+
+      va_envp++;
+
+      const char *va_env = *pa_penv;
+
+      if (va_env == NULL) {
+	/* last environment variable */
+	*pa_envp++ = NULL;
+	len += sizeof(char *);
+	break;
+      }
+
+      const char *pa_env = (const char *)va_to_pa(from, (mem_va_t)va_env, sizeof(const char *));
+
+      if (!pa_env) {
+	/* exec failed */
+	K_PRINTF(3, "system: EXEC bad VA(2): %Xh\n", (mem_va_t)va_env);
+	return -EFAULT;
+      }
+
+      *pa_envp++ = pa_env;
+      len += sizeof(char *);
+
+      envc++;
+
+      if (len >= sizeof(_k_exec_buf)) {
+	K_PRINTF(3, "system: EXEC out of memory (envc)\n");
+	return -E2BIG;
+      }	      
+    }
+    
+    K_PRINTF(3, "system: EXEC envc=%i\n", envc);
+	    
+    // copy environment strings to kernel space
+    const char **pa_envv = (const char **)envp;
+
+    while (1) {
+
+      const char *pa_env = *pa_envv;
+
+      if (pa_env == NULL) {
+	// last string
+	break;
+      }
+	    
+      u16_t alen = strlen(pa_env);
+
+      if (len + alen < sizeof(_k_exec_buf)) {
+	char *pa_k_env = ((char *)_k_exec_buf) + len;
+	K_PRINTF(3, "system: EXEC env +04Xh '%s'\n", len, pa_env);
+	      
+	strcpy(pa_k_env, pa_env);
+	// replace in process string address by kernel storage string address offset
+	*pa_envv++ = (const char *)(u32_t)len;
+
+	len += alen + 1;
+      } else {
+	// buffer overflow
+	K_PRINTF(3, "system: EXEC environment E2BIG\n");
+	return -E2BIG;
+      }
+    }
+  } else {
+    // no environment
+    K_PRINTF(3, "system: EXEC no envp\n");
+    *envoffp = 0;
+  }
+
+  *lenp = len;
+  
+  return 0;
+}
 
 
 void system_task (void)
@@ -272,11 +473,25 @@ void system_task (void)
 
     // load & start init
     init_pid = proc_create_init("init", 0);
-    
-    const char *argv[] = { "/init" };
-  
-    if (proc_exec(init_pid, 1, argv, (char *)argv[0], strlen(argv[0])) < 0) {
-      K_PRINTF(0, "unable to load '%s'\n", &argv[0][0]);
+
+    struct argenv {
+      const char *argv0p;
+      const char *argvnp;
+      const char argv0[sizeof(K_INIT_FILENAME)];
+      const char *envpnp;
+    } ;
+
+    const struct argenv argenv = {
+      .argv0p = (const char *)offsetof(struct argenv, argv0),
+      .argvnp = NULL,
+      .argv0  = K_INIT_FILENAME,
+      .envpnp = NULL
+    };
+
+    //const u16_t envoff = offsetof(struct argenv, envpnp);
+      
+    if (proc_exec(init_pid, (mem_pa_t)&argenv, sizeof(struct argenv), 0 /* no env */) < 0) {
+      K_PRINTF(0, "unable to load '%s'\n", K_INIT_FILENAME);
     } else {
       // wake up init process
       proc_sig(init_pid, SIGALRM);
@@ -345,7 +560,7 @@ void system_task (void)
 	break;
 	
       case FORK:
-	//K_PRINTF(3, "system: FORK pid %i\n", from);
+	K_PRINTF(3, "system: FORK PID-%i\n", from);
 
 	child = proc_fork (from);
 
@@ -357,7 +572,7 @@ void system_task (void)
 	  sendreceive(vfs_pid, &msg_out, O_SEND | O_RECV);
 
 	  /* setup message back to parent (with child PID) */
-	  //K_PRINTF(3, "system: FORK child is %i\n", child);
+	  K_PRINTF(3, "system: PID-%d: FORK child is %i\n", from, child);
 	  msg_out.body.u32 = child;
 	  send(from, &msg_out);
 	  
@@ -374,75 +589,34 @@ void system_task (void)
 
       case EXEC:
 	{
-	  K_PRINTF(3, "system: EXEC pid %i\n", from);
+	  K_PRINTF(3, "system: PID-%i: EXEC\n", from);
 
-	  char **va_argv = msg.body.exec.argv;
-
-	  //K_PRINTF(3, "system: argv VA: %Xh\n", (mem_va_t)va_argv);
-
-	  // copy argument to kernel space, because process memory will be wiped out by proc_exec
-	  const char *k_argv[K_PROC_ARGS_COUNT];
-	  u16_t argc = 0;
+	  // copy argument and environment to kernel space, because process
+	  // memory will be wiped out by proc_exec
 	  u16_t len = 0;
+	  u16_t envoff = 0;
 
-	  while (1) {
-
-	    const char **pa_argv = (const char **)va_to_pa(from, (mem_va_t)va_argv, sizeof(const char *));
+	  s32_t sts = _copy_argv_envp(from, &msg.body.exec, &len, &envoff);
 	  
-	    if (!pa_argv) {
-	      /* exec failed */
-	      K_PRINTF(3, "system: bad VA(1): %Xh\n", (mem_va_t)va_argv);
-	      argc = 0;
-	      break;
-	    }
-
-	    K_PRINTF(3, "system: argv PA: %Xh\n", (mem_pa_t)pa_argv);
-
-	    va_argv++;
-
-	    const char *va_arg = *pa_argv;
-
-	    if (va_arg == NULL) {
-	      /* last argument */
-	      k_argv[argc] = NULL;
-	      break;
-	    }
-	    
-	    const char *pa_arg = (const char *)va_to_pa(from, (mem_va_t)va_arg, sizeof(const char *));
-	    
-	    if (!pa_arg) {
-	      /* exec failed */
-	      K_PRINTF(3, "system: bad VA(2): %Xh\n", (mem_va_t)va_arg);
-	      argc = 0;
-	      break;
-	    }
-
-	    u16_t alen = strlen(pa_arg);
-
-	    if (len + alen < K_PROC_ARGS_SIZE) {
-	      K_PRINTF(3, "system: EXEC arg %i = '%s'\n", argc, pa_arg);
-	  
-	      strcpy(&_k_argv_buf[len], pa_arg);
-	      k_argv[argc] = &_k_argv_buf[len];
-	      len += alen + 1;
-	      argc++;
-	    } else {
-	      // buffer overflow
-	      // TODO: discard additional arguments or discard whole exec ?
-	      K_PRINTF(3, "system: arg buf ov\n");
-	      k_argv[argc] = NULL;
-	      break;
-	    }
+	  if (sts < 0) {
+	    K_PRINTF(3, "system: PID-%i: EXEC  _copy_argv_envp failed\n", from);
+	    msg_out.body.u32 = sts;
+	    send(from, &msg_out);
+	    break;
 	  }
-	    
-	  if (argc == 0 || proc_exec(from, argc, k_argv, _k_argv_buf, len) < 0) {
+	  	  
+	  // load executable
+	  sts = proc_exec(from, (mem_pa_t)_k_exec_buf, len, envoff);
+	  
+	  if (sts < 0) {
 	    /* exec failed */
-	    msg_out.body.u32 = -1;
+	    K_PRINTF(3, "system: PID-%i: EXEC proc_exec failed\n", from);
+	    msg_out.body.u32 = sts;
 	    send(from, &msg_out);
 	    break;
 	  }
 
-	  /* process image successfully replaced */
+	  // process image successfully replaced
 	  // possible optim: force process to READY state
 	  msg_out.body.u32 = 0;
 	  send(from, &msg_out);
@@ -451,7 +625,7 @@ void system_task (void)
 	break;
 
       case WAIT:
-	K_PRINTF(3, "system: WAIT pid %i\n", from);
+	K_PRINTF(3, "system: PID-%i: WAIT\n", from);
 	proc_wait(from);
 	break;
 	

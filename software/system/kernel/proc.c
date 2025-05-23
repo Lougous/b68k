@@ -436,17 +436,20 @@ mem_pa_t va_to_pa(pid_t pid, mem_va_t dst, int len)
 
 #define ALIGN32(a) ((((u32_t)a) + 3) & ~((u32_t)3))
 
-// TODO: change memory allocation BEFORE to start loading data:
-// in case of insufficent memory the process shall return to prior state 
-int proc_exec(pid_t pid, int argc, const char *argv[], char *pa_argbuf, u16_t argbuflen)
+int proc_exec(pid_t pid, mem_pa_t argenvp, u16_t argenvlen, u16_t envoff)
 {
   static u8_t pa_buf[1024];
   message_t msg;
 
-  int fd = sendreceive_vfs_open(&msg, argv[0], O_RDONLY);
+  K_PRINTF(3, "EXEC: PID-%u: proc_exec len=%u envoff=%u\n", pid, argenvlen, envoff);
+  
+  u32_t argv0_offset = *((u32_t *)argenvp);
+  char *argv0 = ((char *)argenvp) + argv0_offset;
+  
+  int fd = sendreceive_vfs_open(&msg, argv0, O_RDONLY);
 
   if (fd < 0) {
-    K_PRINTF(2, "EXEC: %s: cannot open file\n", argv[0]);
+    K_PRINTF(2, "EXEC: %s: cannot open file\n", argv0);
     return -1;
   }
   
@@ -496,7 +499,11 @@ int proc_exec(pid_t pid, int argc, const char *argv[], char *pa_argbuf, u16_t ar
   //  K_PRINTF(3, "%s: %u program entries:\n", argv[0], e_phnum);
 
   struct proc_desc_t *pp = &_proc_table[pid].d;
+  u32_t used_mem_hi = 0;
 
+  // TODO: do in two steps (loops), first to allocate the memory and the second
+  // to load sections. So that in case of insufficent memory the process can
+  // return to prior state 
   for (ph = 0; ph < e_phnum; ph++) {
 
     /* read program header */
@@ -510,34 +517,36 @@ int proc_exec(pid_t pid, int argc, const char *argv[], char *pa_argbuf, u16_t ar
     u32_t p_filesz = *((u32_t *)&pa_buf[16]);  // size in file
     u32_t p_memsz  = *((u32_t *)&pa_buf[20]);  // size in memory
 
-    //    K_PRINTF(3, " #%u: type %x, @%Xh +%Xh (@%Xh +%Xh)\n", ph, p_type, p_vaddr, p_memsz, p_offset, p_filesz);
+    K_PRINTF(3, " #%u: type %x, @%Xh +%Xh (@%Xh +%Xh)\n", ph, p_type, p_vaddr, p_memsz, p_offset, p_filesz);
 
-   if ((p_vaddr + p_memsz) > pp->mem_sz) {
-      /* need to get more memory */
+    if ((p_vaddr + p_memsz) > pp->mem_sz) {
+      // need to get more memory
       mem_pa_t new_ad = mem_realloc(pid, pp->mem_ad, pp->mem_sz, p_vaddr + p_memsz, 0);
       
       if (new_ad == 0) {
-	K_PRINTF(2, "%s: fail to allocate process memory\n", argv[0]);
+	K_PRINTF(2, "%s: fail to allocate process memory\n", argv0);
 	goto exit_error;
       }
 
       pp->mem_ad = new_ad;
       pp->mem_sz = ALIGN32(p_vaddr + p_memsz);
     }
+
+    if ((p_vaddr + p_memsz) > used_mem_hi) {
+      used_mem_hi = ALIGN32(p_vaddr + p_memsz);
+    }
       
-   if (p_filesz == 0) {
+    if (p_filesz == 0) {
       // discard empty segments
       continue;
     }
     
     if (p_type == 1) {
-      /* loadable segment */
+      // loadable segment
       sendreceive_vfs_lseek(&msg, fd, p_offset, SEEK_SET);
 
       while (p_filesz) {
 	u32_t len = p_filesz > sizeof(pa_buf) ? sizeof(pa_buf) : p_filesz;
-
-	//printf("ld @%xh - %u\n", p_vaddr, len);
 
 	if (sendreceive_vfs_read(&msg, fd, &pa_buf[0], len) != len) goto exit_error;
 
@@ -549,47 +558,65 @@ int proc_exec(pid_t pid, int argc, const char *argv[], char *pa_argbuf, u16_t ar
     }
   }
 
-  /* setup arguments memory space */
-  mem_va_t va_argv   = pp->mem_sz;                              // VA for argv table
-  mem_va_t va_argbuf = pp->mem_sz + sizeof(char *)*(argc + 1);  // VA for argv strings
-  u32_t    new_size  = va_argbuf + ALIGN32(argbuflen);
-
-  mem_pa_t new_ad = mem_realloc(pid, pp->mem_ad, pp->mem_sz, new_size, 0);
+  // setup arguments/environment memory space
+  mem_va_t va_argenv = used_mem_hi;
+  u32_t    new_size = used_mem_hi + ALIGN32(argenvlen);
+  
+  // realloc to increase or reduce space !
+  mem_pa_t new_ad   = mem_realloc(pid, pp->mem_ad, pp->mem_sz, new_size, 0);
+  pp->mem_ad = new_ad;
+  pp->mem_sz = new_size;
   
   if (new_ad == 0) {
-    K_PRINTF(3, "%s: fail to allocate process memory\n", argv[0]);
+    K_PRINTF(3, "%s: fail to allocate process memory\n", argv0);
     goto exit_error;
   }
 
-  pp->mem_ad = new_ad;
-  pp->mem_sz = new_size;
+  // change argv/envp offset to virtual addresses: add va_argenv
+  char **pa_argv = (char **)argenvp;
+  u16_t argc = 0;
 
-  /* copy arguments */
-  int arg;
-  char **pa_argv = (char **)va_to_pa(pid, va_argv, sizeof(char *)*(argc + 1));
-
-  for (arg = 0; arg < argc; arg++) {
-    *pa_argv++ = (char *)va_argbuf;
-    
-    /* add one character for ending null char */
-    int len = strlen(argv[arg]) + 1;
-    
-    copy_to_user(pid, va_argbuf, (mem_pa_t)argv[arg], len);
-            
-    va_argbuf += len + 1;
+  while (*pa_argv) {
+    *pa_argv++ += va_argenv;
+    argc++;
   }
 
-  *pa_argv = NULL;
+  char **pa_envp;
+  mem_va_t va_envp;
 
-  /* setup  */
-  strncpy(pp->name, argv[0], K_PROC_NAME_MAX_LEN-1);
+  // environment is optional
+  if (envoff) {
+    pa_envp = (char **)(argenvp + envoff);
+
+    while (*pa_envp) {
+      *pa_envp++ += va_argenv;
+    }
+
+    va_envp = va_argenv + envoff;
+  } else {
+    va_envp = NULL;
+  }
+
+  // copy arguments/environment
+  copy_to_user(pid, va_argenv, argenvp, ALIGN32(argenvlen));
+
+  // process setup
+  strncpy(pp->name, argv0, K_PROC_NAME_MAX_LEN-1);
+
   
   pp->a[0] = argc;
-  pp->a[1] = va_argv;
+  pp->a[1] = (u32_t)va_argenv;
+  pp->a[2] = (u32_t)va_envp;
+  pp->a[3] = envoff ? (u32_t)(argenvlen - envoff) : 0;
   pp->pc = e_entry;
   /* invalid SP, will do address error if not properly initialized by process itself */
   pp->a[7] = 0xffffffff;
   
+  K_PRINTF(3, "EXEC: PID-%u: argc=%u\n", pid, pp->a[0]);
+  K_PRINTF(3, "EXEC: PID-%u: argv=%Xh\n", pid, pp->a[1]);
+  K_PRINTF(3, "EXEC: PID-%u: envp=%Xh\n", pid, pp->a[2]);
+  K_PRINTF(3, "EXEC: PID-%u: envlen=%u\n", pid, pp->a[3]);
+
   // TODO: check e_entry valid ?
 
   //proc_stat(pid);
@@ -602,7 +629,7 @@ int proc_exec(pid_t pid, int argc, const char *argv[], char *pa_argbuf, u16_t ar
   return 0;
 
  exit_error:
-  K_PRINTF(2, "EXEC: %s: bad file format\n", argv[0]);
+  K_PRINTF(2, "EXEC: %s: bad file format\n", argv0);
   
   sendreceive_vfs_close(&msg, fd);
 

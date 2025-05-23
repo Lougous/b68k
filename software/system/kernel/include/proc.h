@@ -18,7 +18,7 @@ extern pid_t proc_create_task (pid_t pid, char *name, void *pc, void *stk, u32_t
 extern void proc_kill (pid_t pid);
 extern pid_t proc_fork (pid_t ppid);
 extern proc_state_t proc_get_state (pid_t pid);
-extern int proc_exec(pid_t pid, int argc, const char *argv[], char *pa_argbuf, u16_t argbuflen);
+extern int proc_exec(pid_t pid, mem_pa_t argenvp, u16_t argenvlen, u16_t envoff);
 extern pid_t proc_schedule (pid_t pid);
 extern pid_t proc_current (void);
 extern uid_t proc_get_uid(pid_t pid);

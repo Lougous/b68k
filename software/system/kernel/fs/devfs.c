@@ -294,8 +294,7 @@ static off_t _vn_lseek(struct vnode *pvn, off_t offset, int whence)
   return 0;
 }
 
-static int _vn_getdents (struct vnode *pvn, char *buf, unsigned int count)
-//int devfs_getdents(fs_file_context_t *ctx, struct dirent *dirp, unsigned int count)
+static int _vn_getdents (struct vnode *pvn, char *buf, unsigned int count, pid_t pid)
 {
   K_PRINTF(3, "devfs: getdents: node %Xh\n", pvn);
   

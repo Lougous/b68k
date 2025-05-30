@@ -486,7 +486,7 @@ static off_t _rnode_lseek (struct vnode *pvn, off_t offset, int whence)
   return 0;
 }
 
-static int _rnode_getdents (struct vnode *pvn, char *buf, unsigned int count)
+static int _rnode_getdents (struct vnode *pvn, char *buf, unsigned int count, pid_t pid)
 {
   struct dirent *dirp = (struct dirent *)buf;
   

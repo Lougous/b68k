@@ -45,11 +45,12 @@ struct fs_type {
 
 extern int16_t rfs_mount(struct vfs *pvfs, dev_t *pdev);
 extern int16_t devfs_mount(struct vfs *pvfs, dev_t *pdev);
+extern int16_t fat_mount(struct vfs *pvfs, dev_t *pdev);
 
 static const struct fs_type _vfs_fs_types[] = {
   { .name = "devfs", .mount = devfs_mount },
   { .name = "rfs", .mount = rfs_mount },
-  //  { .name = "fat", .mount = fat_mount }
+  { .name = "fat", .mount = fat_mount }
 };
 
 // vnodes pool
@@ -277,9 +278,7 @@ static void _vfs_mount (pid_t pid, message_t *msg)
 {
   message_t resp = { .body.u32 = 0 };  // OK
   
-  // allowed for kernel tasks only
-  // TODO : allow for root user
-  if (proc_get_uid(pid) != PROC_UID_KERNEL) {
+  if (proc_get_uid(pid) != PROC_UID_KERNEL && proc_get_uid(pid) != PROC_UID_ROOT ) {
     resp.body.u32 = -EPERM;
   }
 
@@ -519,7 +518,7 @@ static void _vfs_getdents (pid_t pid, message_t *msg)
 
   // TODO: check directory is open
 
-  resp.body.s32 = pvn->v_op->vn_getdents(pvn, (char *)buf, count);
+  resp.body.s32 = pvn->v_op->vn_getdents(pvn, (char *)buf, count, pid);
 
   K_PRINTF(3, "vfs: PID-%i GETDENTS: %i\n", pid, resp.body.s32);
 

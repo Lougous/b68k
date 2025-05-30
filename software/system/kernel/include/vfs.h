@@ -75,7 +75,7 @@ struct vnodeops {
   //  int (*vn_rename)();
   int (*vn_mkdir)(struct vnode *pv, char *nm, pid_t pid);
   //  int (*vn_rmdir)();
-  int (*vn_getdents)(struct vnode *pv, char *buf, unsigned int);
+  int (*vn_getdents)(struct vnode *pv, char *buf, unsigned int, pid_t pid);
   //  int (*vn_symlink)();
   //  int (*vn_readlink)();
   //  int (*vn_fsync)();

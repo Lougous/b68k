@@ -132,14 +132,8 @@ u32_t _k_exec_buf[(K_PROC_ARGS_SIZE+3) / 4];  // TODO: ARG_MAX in limits.h
 // root file system boot list (ordered)
 const char * const _root_boot_list[] = {
   // device, file system (0=auto, for disk partitions only)
-  "sda0",   0,
-  "sda1",   0,
-  "sda2",   0,
-  "sda3",   0,
-  "sdb0",   0,
-  "sdb1",   0,
-  "sdb2",   0,
-  "sdb3",   0,
+  //  "sda0",   0,
+  //  "sdb0",   0,
   "serial", "rfs",
   0
 };
@@ -356,9 +350,6 @@ void system_task (void)
   /* create tasks */
   _POST_code(0xC);
 
-  //B68K_MFP->ad = B68K_MFP_REG_IRQSTS;
-  u8_t btsp_mode = 0;  // B68K_MFP->dt & 0x80;
-
   // start with tty task, so that message can be displayed ASAP on screen
   // tty uses clock services
   proc_create_task(2, "clock", clock_task, clock_stack, _CLOCK_STACK_SIZE);
@@ -397,105 +388,97 @@ void system_task (void)
   while (proc_get_state(vfs_pid) != PROC_STATE_BLOCKED) proc_yield();
   _POST_code(0xE);
 
-  /* create/load init process */
-  pid_t init_pid;
   static message_t msg;
 
-  /* check boot mode jumper position */
-  if (btsp_mode) {
-    K_PRINTF(0, "serial bootstrap enable\n");
-    K_PRINTF(0, "fatal: serial bootstrap not implemented yet.\n");
-    while(1);
+  // mount rout file system
+  u8_t root_mounted = 0;
 
-  } else {
-    /* mount points */
-    u8_t root_mounted = 0;
+  K_PRINTF(2, "mounting root file sytem\n");
 
-    K_PRINTF(2, "mounting root file sytem\n");
+  char **p_boot_list = (char **)_root_boot_list;
 
-    char **p_boot_list = (char **)_root_boot_list;
+  msg.type = MOUNT;
+  msg.body.mount.path_to = "/";
 
+  while (*p_boot_list) {
+    char *dev = *p_boot_list++;
+    char *type = *p_boot_list++;
+      
     msg.type = MOUNT;
+    msg.body.mount.dev = dev;
     msg.body.mount.path_to = "/";
-
-    while (*p_boot_list) {
-      char *dev = *p_boot_list++;
-      msg.type = MOUNT;
-      msg.body.mount.dev = dev;
-      msg.body.mount.path_to = "/";
-      msg.body.mount.type = *p_boot_list++;
-
-      sendreceive(vfs_pid, &msg, O_SEND | O_RECV);
-
-      if (msg.body.u32 == 0) {
-	K_PRINTF(0, "root: %s\n", dev);
-	root_mounted = 1;
-	break;
-      } else {
-	K_PRINTF(1, "%s: cannot mount (%i)\n", dev, msg.body.u32);
-      }
-    }
-    
-    if (!root_mounted) {
-      K_PRINTF(0, "root mounting failed, system startup aborted\n");
-      goto abort;
-    }
-
-    // create /dev directory to able mounting  devfs
-#if 0
-    msg.type = MKDIR;
-    msg.body.mkdir.path = "/dev";
-    msg.body.mkdir.len  = 4;
-    msg.body.mkdir.flags = 0;
+    msg.body.mount.type = type;
 
     sendreceive(vfs_pid, &msg, O_SEND | O_RECV);
 
-    if (msg.body.u32 != 0) {
-      K_PRINTF(0, "failed to create /dev, system startup aborted\n");
-      goto abort;
+    if (msg.body.u32 == 0) {
+      K_PRINTF(0, "root: %s, type %s\n", dev, type);
+      root_mounted = 1;
+      break;
+    } else {
+      K_PRINTF(1, "%s: cannot mount (%i)\n", dev, msg.body.u32);
     }
+  }
+    
+  if (!root_mounted) {
+    K_PRINTF(0, "root mounting failed, system startup aborted\n");
+    goto abort;
+  }
+
+  // create /dev directory to able mounting  devfs
+#if 0
+  msg.type = MKDIR;
+  msg.body.mkdir.path = "/dev";
+  msg.body.mkdir.len  = 4;
+  msg.body.mkdir.flags = 0;
+
+  sendreceive(vfs_pid, &msg, O_SEND | O_RECV);
+
+  if (msg.body.u32 != 0) {
+    K_PRINTF(0, "failed to create /dev, system startup aborted\n");
+    goto abort;
+  }
 #endif
     
-    // devfs => /dev
-    K_PRINTF(1, "mounting devfs\n");
+  // mount devfs
+  K_PRINTF(1, "/dev: devfs\n");
     
-    msg.type = MOUNT;
-    msg.body.mount.dev = "devfs";
-    msg.body.mount.path_to = "/dev";
-    msg.body.mount.type = "devfs";
+  msg.type = MOUNT;
+  msg.body.mount.dev = "devfs";
+  msg.body.mount.path_to = "/dev";
+  msg.body.mount.type = "devfs";
 
-    sendreceive(vfs_pid, &msg, O_SEND | O_RECV);
+  sendreceive(vfs_pid, &msg, O_SEND | O_RECV);
 
-    if (msg.body.u32 != 0) {
-      K_PRINTF(0, "devfs mounting failed, system startup aborted\n");
-      goto abort;
-    }
+  if (msg.body.u32 != 0) {
+    K_PRINTF(0, "devfs mounting failed, system startup aborted\n");
+    goto abort;
+  }
 
-    // load & start init
-    init_pid = proc_create_init("init", 0);
+  // create, load & start init process
+  pid_t init_pid = proc_create_init("init", 0);
 
-    struct argenv {
-      const char *argv0p;
-      const char *argvnp;
-      const char argv0[sizeof(K_INIT_FILENAME)];
-      const char *envpnp;
-    } ;
+  struct argenv {
+    const char *argv0p;
+    const char *argvnp;
+    const char argv0[sizeof(K_INIT_FILENAME)];
+    const char *envpnp;
+  } ;
 
-    const struct argenv argenv = {
-      .argv0p = (const char *)offsetof(struct argenv, argv0),
-      .argvnp = NULL,
-      .argv0  = K_INIT_FILENAME,
-      .envpnp = NULL
-    };
+  const struct argenv argenv = {
+    .argv0p = (const char *)offsetof(struct argenv, argv0),
+    .argvnp = NULL,
+    .argv0  = K_INIT_FILENAME,
+    .envpnp = NULL
+  };
 
-    //const u16_t envoff = offsetof(struct argenv, envpnp);
+  //const u16_t envoff = offsetof(struct argenv, envpnp);
       
-    if (proc_exec(init_pid, (mem_pa_t)&argenv, sizeof(struct argenv), 0 /* no env */) < 0) {
-      K_PRINTF(0, "unable to load '%s'\n", K_INIT_FILENAME);
-    } else {
-      // wake up init process
-      proc_sig(init_pid, SIGALRM);
-    }
+  if (proc_exec(init_pid, (mem_pa_t)&argenv, sizeof(struct argenv), 0 /* no env */) < 0) {
+    K_PRINTF(0, "unable to load '%s'\n", K_INIT_FILENAME);
+  } else {
+    // wake up init process
+    proc_sig(init_pid, SIGALRM);
   }
 
  abort:

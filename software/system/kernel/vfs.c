@@ -274,7 +274,7 @@ int _lookuppn (char *nm, struct vnode **ppv, pid_t pid)
   return 0;
 }
 
-#define MOUNT_DEBUG  K_DEBUG_LEVEL
+#define MOUNT_DEBUG  3
 
 static void _vfs_mount (pid_t pid, message_t *msg)
 {

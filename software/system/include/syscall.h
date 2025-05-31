@@ -1,3 +1,9 @@
+//
+// B68K Computer - Copyright (c) 2024 Lougous
+// https://github.com/Lougous/b68k
+//
+// system calls - kernel interface for user space
+//
 
 #ifndef _syscall_h_
 #define _syscall_h_

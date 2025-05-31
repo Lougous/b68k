@@ -30,6 +30,11 @@ int open(const char *pathname, int flags)
   if (rval != 3) {
     return -1;
   }
+
+  if (msg.body.s32 < 0) {
+    errno = -msg.body.s32;
+    return -1;
+  }
   
   return msg.body.s32;
 }
@@ -48,7 +53,12 @@ int close(int fd)
     return -1;
   }
   
-  return msg.body.s32;
+  if (msg.body.s32) {
+    errno = -msg.body.s32;
+    return -1;
+  }
+  
+  return 0;
 }
 
 ssize_t read(int fd, void *buf, size_t count)
@@ -64,6 +74,11 @@ ssize_t read(int fd, void *buf, size_t count)
   SENDRECEIVE(msg, 3, rval);
 
   if (rval != 3) {
+    return -1;
+  }
+  
+  if (msg.body.s32 < 0) {
+    errno = -msg.body.s32;
     return -1;
   }
   
@@ -85,6 +100,11 @@ ssize_t write(int fd, const void *buf, size_t count)
   if (rval != 3) {
     return -1;
   }
+
+  if (msg.body.s32 < 0) {
+    errno = -msg.body.s32;
+    return -1;
+  }
   
   return msg.body.s32;
 }
@@ -98,7 +118,12 @@ int fork(void)
 
   SENDRECEIVE(msg, 0, rval);
 
-  if (rval != 0 || msg.body.s32 < 0) {
+  if (rval != 0) {
+    return -1;
+  }
+
+  if (msg.body.s32 < 0) {
+    errno = -msg.body.s32;
     return -1;
   }
   
@@ -117,10 +142,13 @@ int execve(const char *pathname, char *const argv[], char *const envp[])
 
   SENDRECEIVE(msg, 0, rval);
   
+  if (rval != 0) {
+    return -1;
+  }
+
   // if this system call returns, something went wrong
-  (void)rval;  // prevent warning
-  
-  return msg.body.s32;
+  errno = -msg.body.s32;
+  return -1;
 }
 
 int chdir(const char *path)
@@ -135,11 +163,16 @@ int chdir(const char *path)
 
   SENDRECEIVE(msg, 3, rval);
 
-  if (rval != 3 || msg.body.s32 < 0) {
+  if (rval != 3) {
     return -1;
   }
   
-  return msg.body.s32;
+  if (msg.body.s32 < 0) {
+    errno = -msg.body.s32;
+    return -1;
+  }
+  
+  return 0;
 }
 
 int mount(const char *source, const char *target,

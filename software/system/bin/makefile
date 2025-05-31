@@ -22,7 +22,7 @@ LDLIBS=-lc -lgcc
 OBJCOPY=${XCROOT}objcopy
 OBJDUMP=${XCROOT}objdump
 
-BIN=ls sh cat init test mount
+BIN=ls sh cat init printenv mount
 
 # entries
 all:	libc ${BIN}
@@ -35,7 +35,7 @@ ls:	ls.o crt0.o
 sh:	sh.o crt0.o
 cat:	cat.o crt0.o
 init:	init.o crt0.o
-test:	test.o crt0.o
+printenv:	printenv.o crt0.o
 mount:	mount.o crt0.o
 
 clean:

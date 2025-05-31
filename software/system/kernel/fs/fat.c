@@ -94,6 +94,12 @@ static u16_t _read_u16_le (u8_t *pc)
   return pc[0] + (((u16_t)pc[1]) << 8);
 }
 
+static u32_t _read_u32_le (u8_t *pc)
+{
+  // TODO: possible optim with swap instruction
+  return pc[0] + (((u32_t)pc[1]) << 8) + (((u32_t)pc[2]) << 16) + (((u32_t)pc[3]) << 24);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // vnode/fnode management
 ////////////////////////////////////////////////////////////////////////////////
@@ -198,9 +204,6 @@ int fat_mount (struct vfs *pvfs, dev_t *pdev)
   //int fat_mount(fs_context_t *ctx) {
   u32_t i;
 
-
-  //  K_PRINTF(2, "FirstSector       : %u\n", ctx->fat.FirstSector);
-
   // read partition boot record
   msg.type = DEV_READ;
   msg.body.dev_read.handle = pdev->handle;
@@ -213,10 +216,11 @@ int fat_mount (struct vfs *pvfs, dev_t *pdev)
   if (msg.body.s32 != 512) return -4;
   
   K_PRINTF(3, "fat: partition label   : ");
+  if (K_DEBUG_LEVEL >= 3) {
+    for (i = 0x2B; i < 0x2b+11; i++) putchar(_buf[i]);
+    putchar('\n');
+  }
   
-  for (i = 0x2B; i < 0x2b+11; i++) putchar(_buf[i]);
-  putchar('\n');
-
   pvfs->vfs_op           = (struct vfsops *)&_fat_vfs_op;
   pvfs->vfs_vnodecovered = 0;
   pvfs->vfs_flag         = 0;  // TODO
@@ -225,13 +229,12 @@ int fat_mount (struct vfs *pvfs, dev_t *pdev)
   pfat->dev = pdev;
   pfat->pvn = NULL;  // empty fnode list yet
 
-
   pfat->FirstSector = pdev->attr.partition.sector_start;
   pfat->NbSector    = pdev->attr.partition.sector_cnt;
-  pfat->BytesPerSector    = _buf[0xB] + (_buf[0xC] << 8);
+  pfat->BytesPerSector    = _read_u16_le(_buf + 0xB);
   pfat->SectorsPerCluster = _buf[0xD];
   pfat->FatCopyNumber     = _buf[0x10];
-  pfat->MaxRootEntries    = _buf[0x11] + (_buf[0x12] << 8);
+  pfat->MaxRootEntries    = _read_u16_le(_buf + 0x11);
 
   if (pfat->BytesPerSector != 512) {
     K_PRINTF(3, "fat: unexpecting sector size (%u, expected 512)\n", pfat->BytesPerSector);
@@ -243,10 +246,10 @@ int fat_mount (struct vfs *pvfs, dev_t *pdev)
   K_PRINTF(3, "fat: FatCopyNumber     : %u\n", pfat->FatCopyNumber);
   
   // Start + # of Reserved Sectors
-  pfat->FatStartSector = pfat->FirstSector + (_buf[0xE] + (_buf[0xF] << 8));
+  pfat->FatStartSector = pfat->FirstSector + (_read_u16_le(_buf + 0xE));
 
   // Start + # of Reserved + (# of Sectors Per FAT * 2)
-  pfat->RootStartSector = pfat->FatStartSector + pfat->FatCopyNumber * (_buf[0x16] + (_buf[0x17] << 8));
+  pfat->RootStartSector = pfat->FatStartSector + pfat->FatCopyNumber * (_read_u16_le(_buf + 0x16));
 
   // FatRootStartSector + ((Maximum Root Directory Entries * 32) / Bytes per Sector)
   pfat->DataStartSector = pfat->RootStartSector + (32*pfat->MaxRootEntries)/512;
@@ -329,7 +332,7 @@ static u16_t _fat_next_cluster(struct vnode *pvn, u16_t from)
 
   pfn->buf_sector = 0;  // invalid
  
-  to = pfn->buf[(from*2) & 0x1ff] + (pfn->buf[((from*2) & 0x1ff) + 1] << 8);
+  to = _read_u16_le(pfn->buf + ((from*2) & 0x1ff));
 
   return to;
 }
@@ -380,7 +383,7 @@ static int _fnode_lookup_root(struct vnode *pvn, char *nm, struct vnode **ppv, p
       
       if (strncmp(_to_fat_name((char *)nm, &name83[0]), (char *)&pfn->buf[32*entry], 11) == 0) {
 	// name match
-	u32_t start_cluster = pfn->buf[32*entry+0x1A] + (pfn->buf[32*entry+0x1B] << 8);
+	u32_t start_cluster = _read_u16_le(pfn->buf + 32*entry+0x1A);
 	fnode_t sector = pfat->DataStartSector + (start_cluster - 2) * pfat->SectorsPerCluster;
 
 	*ppv = _find_vnode(pfat, sector);
@@ -404,8 +407,7 @@ static int _fnode_lookup_root(struct vnode *pvn, char *nm, struct vnode **ppv, p
 	pfn_found->Attributes      = pfn->buf[32*entry+0x0B];
 	pfn_found->CurrentCluster  = start_cluster;
 	pfn_found->FirstCluster    = start_cluster;
-	pfn_found->FileSize        = pfn->buf[32*entry+0x1c] + (pfn->buf[32*entry+0x1d] << 8) +
-	  (pfn->buf[32*entry+0x1e] << 16) + (pfn->buf[32*entry+0x1f] << 24);
+	pfn_found->FileSize        = _read_u32_le(pfn->buf + 32*entry+0x1c);
 
 	VN_HOLD(*ppv);
 	(*ppv)->v_vfsmountedhere = 0;
@@ -483,7 +485,7 @@ static int _fnode_lookup(struct vnode *pvn, char *nm, struct vnode **ppv, pid_t 
       
 	  if (strncmp(_to_fat_name((char *)nm, &name83[0]), (char *)&pfn->buf[32*entry], 11) == 0) {
 	    // name match
-	    u32_t start_cluster = pfn->buf[32*entry+0x1A] + (pfn->buf[32*entry+0x1B] << 8);
+	    u32_t start_cluster = _read_u16_le(pfn->buf + 32*entry+0x1A);
 	    fnode_t sector = pfat->DataStartSector + (start_cluster - 2) * pfat->SectorsPerCluster;
 
 	    *ppv = _find_vnode(pfat, sector);
@@ -506,8 +508,7 @@ static int _fnode_lookup(struct vnode *pvn, char *nm, struct vnode **ppv, pid_t 
 
 	    pfn_found->Attributes      = pfn->buf[32*entry+0x0B];
 	    pfn_found->FirstCluster    = start_cluster;
-	    pfn_found->FileSize        = pfn->buf[32*entry+0x1c] + (pfn->buf[32*entry+0x1d] << 8) +
-	      (pfn->buf[32*entry+0x1e] << 16) + (pfn->buf[32*entry+0x1f] << 24);
+	    pfn_found->FileSize        = _read_u32_le(pfn->buf + 32*entry+0x1c);
 
 	    VN_HOLD(*ppv);
 	    (*ppv)->v_vfsmountedhere = 0;

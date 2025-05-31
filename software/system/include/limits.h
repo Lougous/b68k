@@ -1,3 +1,7 @@
+//
+// B68K Computer - Copyright (c) 2024 Lougous
+// https://github.com/Lougous/b68k
+//
 
 #ifndef _limits_h_
 #define _limits_h_

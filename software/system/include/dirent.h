@@ -1,3 +1,7 @@
+//
+// B68K Computer - Copyright (c) 2024 Lougous
+// https://github.com/Lougous/b68k
+//
 
 #ifndef _dirent_h_
 #define _dirent_h_

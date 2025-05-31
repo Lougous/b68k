@@ -1,3 +1,7 @@
+//
+// B68K Computer - Copyright (c) 2024 Lougous
+// https://github.com/Lougous/b68k
+//
 
 #ifndef _fcntl_h_
 #define _fcntl_h_

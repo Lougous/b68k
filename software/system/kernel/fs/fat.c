@@ -42,7 +42,7 @@ typedef u32_t fnode_t;  // start sector of the file/directory
 
 // private data for struct vfs (.vfs_data)
 struct fat {
-  dev_t *dev;
+  struct dev *dev;
   
   u16_t BytesPerSector;
   u8_t  SectorsPerCluster;
@@ -197,7 +197,7 @@ static int _fat_root (struct vfs *pvfs, struct vnode **ppv)
   return 0;
 }
 
-int fat_mount (struct vfs *pvfs, dev_t *pdev)
+int fat_mount (struct vfs *pvfs, struct dev *pdev)
 {
   message_t msg;
 
@@ -316,7 +316,7 @@ static u16_t _fat_next_cluster(struct vnode *pvn, u16_t from)
   struct fat *pfat = (struct fat *)&(pvn->v_vfsp->vfs_data[0]);
   struct fnode *pfn = (struct fnode *)&(pvn->v_data[0]);
   
-  dev_t *pdev = pfat->dev;
+  struct dev *pdev = pfat->dev;
   u16_t to;
   message_t msg;
 
@@ -345,7 +345,7 @@ static int _fnode_lookup_root(struct vnode *pvn, char *nm, struct vnode **ppv, p
   struct fat *pfat = (struct fat *)&(pvn->v_vfsp->vfs_data[0]);
   struct fnode *pfn = (struct fnode *)&(pvn->v_data[0]);
   
-  dev_t *pdev = pfat->dev;
+  struct dev *pdev = pfat->dev;
   char name83[12];
   u16_t dent;
   u32_t seek = pfat->RootStartSector*512;
@@ -443,7 +443,7 @@ static int _fnode_lookup(struct vnode *pvn, char *nm, struct vnode **ppv, pid_t 
     return _fnode_lookup_root(pvn, nm, ppv, pid);
   }
   
-  dev_t *pdev = pfat->dev;
+  struct dev *pdev = pfat->dev;
   u16_t cluster;
   char name83[11];
   message_t msg;
@@ -566,7 +566,7 @@ static size_t _fnode_read (struct vnode *pvn, void *buf, size_t count, pid_t pid
   message_t msg;
   struct fat *pfat = (struct fat *)&(pvn->v_vfsp->vfs_data[0]);
   struct fnode *pfn = (struct fnode *)&(pvn->v_data[0]);
-  dev_t *pdev = pfat->dev;
+  struct dev *pdev = pfat->dev;
   size_t read = 0;
 
   //printf("-> fat_read\n");
@@ -724,7 +724,7 @@ static u8_t *_fat_get_root_entry(struct vnode *pvn)
   message_t msg;
   struct fat *pfat = (struct fat *)&(pvn->v_vfsp->vfs_data[0]);
   struct fnode *pfn = (struct fnode *)&(pvn->v_data[0]);
-  dev_t *pdev = pfat->dev;
+  struct dev *pdev = pfat->dev;
 
   K_PRINTF(3, "fat: _fat_get_root_entry vfsp = %Xh\n", pvn->v_vfsp);
 

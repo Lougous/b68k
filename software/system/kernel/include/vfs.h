@@ -9,7 +9,7 @@
 
 // temporary !
 struct stat {
-  dev_t *st_rdev;
+  struct dev *st_rdev;
 };
 
 
@@ -23,7 +23,7 @@ struct vfs {
 };
 
 struct vfsops {
-  int (*vfs_mount)(struct vfs *pvfs, dev_t *pdev);
+  int (*vfs_mount)(struct vfs *pvfs, struct dev *pdev);
   int (*vfs_unmount)(struct vfs *pvfs);
   int (*vfs_root)(struct vfs *pvfs, struct vnode **ppv);
   //  int (*vfs_statfs)();

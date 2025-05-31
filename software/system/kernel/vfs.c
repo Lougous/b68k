@@ -40,12 +40,12 @@ struct vfs *_vfs_used_vfs_list;
 // list of managed file systems
 struct fs_type {
   const char *name;
-  int16_t (* mount)(struct vfs *pvfs, dev_t *pdev);
+  int16_t (* mount)(struct vfs *pvfs, struct dev *pdev);
 };
 
-extern int16_t rfs_mount(struct vfs *pvfs, dev_t *pdev);
-extern int16_t devfs_mount(struct vfs *pvfs, dev_t *pdev);
-extern int16_t fat_mount(struct vfs *pvfs, dev_t *pdev);
+extern int16_t rfs_mount(struct vfs *pvfs, struct dev *pdev);
+extern int16_t devfs_mount(struct vfs *pvfs, struct dev *pdev);
+extern int16_t fat_mount(struct vfs *pvfs, struct dev *pdev);
 
 static const struct fs_type _vfs_fs_types[] = {
   { .name = "devfs", .mount = devfs_mount },
@@ -308,7 +308,7 @@ static void _vfs_mount (pid_t pid, message_t *msg)
   }
 
   // get device to mount
-  dev_t *pdev;
+  struct dev *pdev;
 
   if (proc_get_uid(pid) == PROC_UID_KERNEL) {
     // kernel specifies device name (root filesystem device cannot be specified as /dev/...)
@@ -331,14 +331,14 @@ static void _vfs_mount (pid_t pid, message_t *msg)
       goto _vfs_mount_exit;
     }
 
-    // get dev_t
+    // get struct dev
     struct stat stats;
     pvn_dev->v_op->vn_getattr(pvn_dev, &stats);
 
     pdev = stats.st_rdev;
   }
 
-  int16_t (* pmount)(struct vfs *pvfs, dev_t *pdev) = 0;
+  int16_t (* pmount)(struct vfs *pvfs, struct dev *pdev) = 0;
 
   if (type) {
     int16_t ft;

@@ -16,7 +16,7 @@
 #include "proc.h"
 #include "dev.h"
 
-dev_t _dev_list[K_DEV_COUNT];
+struct dev _dev_list[K_DEV_COUNT];
 
 void dev_init (void)
 {
@@ -30,12 +30,12 @@ void dev_init (void)
   }
 }
 
-dev_t *dev_get (const char *name)
+struct dev *dev_get (const char *name)
 {
   u32_t dev;
 
   for (dev = 0; dev < K_DEV_COUNT; dev++) {
-    dev_t *pdev = &_dev_list[dev];
+    struct dev *pdev = &_dev_list[dev];
 
     if (strcmp(name, pdev->name) == 0) {
       return pdev;
@@ -56,7 +56,7 @@ char *dev_name (u32_t id)
 }
 
 
-static dev_t *_dev_register (const char *name, pid_t drv, void *handle)
+static struct dev *_dev_register (const char *name, pid_t drv, void *handle)
 {
   u32_t dev;
 
@@ -81,9 +81,9 @@ static dev_t *_dev_register (const char *name, pid_t drv, void *handle)
   return &_dev_list[dev];
 }
 
-dev_t *dev_register_char(const char *name, pid_t drv, void *handle)
+struct dev *dev_register_char(const char *name, pid_t drv, void *handle)
 {
-  dev_t *pdev;
+  struct dev *pdev;
 
   if (! (pdev = _dev_register(name, drv, handle))) {
     return 0;
@@ -98,7 +98,7 @@ dev_t *dev_register_char(const char *name, pid_t drv, void *handle)
   
 u32_t dev_register_disk(const char *name, pid_t drv, void *handle, u8_t *mbr)
 {
-  dev_t *pdev;
+  struct dev *pdev;
   u32_t pn;
 
   if (! (pdev = _dev_register(name, drv, handle))) {

@@ -29,7 +29,7 @@
 // private data for struct vfs (.vfs_data)
 struct rfs {
   // device
-  dev_t *dev;
+  struct dev *dev;
   // root rnode
   rnode_t root;
   // list of vnodes
@@ -78,7 +78,7 @@ static u8_t _check_msg(u8_t *msg)
   return 1;
 }
 
-static u8_t _receive_msg(dev_t *pdev, u8_t *buf)
+static u8_t _receive_msg(struct dev *pdev, u8_t *buf)
 {
   message_t msg;
   
@@ -176,7 +176,7 @@ static struct vnode *_allocate_vnode(struct vfs *pvfs, rnode_t rnode)
 ////////////////////////////////////////////////////////////////////////////////
 const struct vfsops _rfs_vfs_op;
 
-int rfs_mount (struct vfs *pvfs, dev_t *pdev)
+int rfs_mount (struct vfs *pvfs, struct dev *pdev)
 {
   message_t msg;
 
@@ -278,7 +278,7 @@ static int _rnode_open(struct vnode *pvn, int flags, pid_t pid)
   struct rfs *prfs = (struct rfs *)&(pvfs->vfs_data[0]);
   struct rnode *prn = (struct rnode *)&(pvn->v_data[0]);
 
-  dev_t *pdev = prfs->dev;
+  struct dev *pdev = prfs->dev;
   
   message_t msg;
 
@@ -337,7 +337,7 @@ static int _rnode_close(struct vnode *pvn, pid_t pid)
   struct rfs *prfs = (struct rfs *)&(pvfs->vfs_data[0]);
   struct rnode *prn = (struct rnode *)&(pvn->v_data[0]);
 
-  dev_t *pdev = prfs->dev;
+  struct dev *pdev = prfs->dev;
   
   message_t msg;
 
@@ -392,7 +392,7 @@ static size_t _rnode_read (struct vnode *pvn, void *buf, size_t count, pid_t pid
   struct rfs *prfs = (struct rfs *)&(pvfs->vfs_data[0]);
   struct rnode *prn = (struct rnode *)&(pvn->v_data[0]);
 
-  dev_t *pdev = prfs->dev;
+  struct dev *pdev = prfs->dev;
   
   message_t msg;
   u8_t *dst = (u8_t *)buf;
@@ -494,7 +494,7 @@ static int _rnode_getdents (struct vnode *pvn, char *buf, unsigned int count, pi
   struct rfs *prfs = (struct rfs *)&(pvfs->vfs_data[0]);
   struct rnode *prn = (struct rnode *)&(pvn->v_data[0]);
 
-  dev_t *pdev = prfs->dev;
+  struct dev *pdev = prfs->dev;
 
   message_t msg;
 
@@ -585,7 +585,7 @@ static int _rnode_mkdir (struct vnode *pvn, char *nm, pid_t pid)
   struct rfs *prfs = (struct rfs *)&(pvfs->vfs_data[0]);
   struct rnode *prn = (struct rnode *)&(pvn->v_data[0]);
 
-  dev_t *pdev = prfs->dev;
+  struct dev *pdev = prfs->dev;
 
   message_t msg;
 
@@ -642,7 +642,7 @@ static int _rnode_lookup(struct vnode *pvn, char *nm, struct vnode **ppv, pid_t 
   struct rfs *prfs = (struct rfs *)&(pvfs->vfs_data[0]);
   struct rnode *prn = (struct rnode *)&(pvn->v_data[0]);
 
-  dev_t *pdev = prfs->dev;
+  struct dev *pdev = prfs->dev;
   
   message_t msg;
   int len = strlen(nm);

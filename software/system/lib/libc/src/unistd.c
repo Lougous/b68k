@@ -12,6 +12,7 @@
 
 #include <unistd.h>
 #include <fcntl.h>
+#include <errno.h>
 
 #include "trap.h"
 
@@ -141,3 +142,31 @@ int chdir(const char *path)
   return msg.body.s32;
 }
 
+int mount(const char *source, const char *target,
+	  const char *filesystemtype, unsigned long mountflags,
+	  const void *data)
+{
+  // message to vfs task
+  volatile message_t msg = {
+    .type               = MOUNT,
+    .body.mount.dev     = (char *)source,
+    .body.mount.path_to = (char *)target,
+    .body.mount.type    = (char *)filesystemtype
+  };
+
+  u32_t rval;
+
+  SENDRECEIVE(msg, 3, rval);
+
+  if (rval != 3) {
+    // system error ...
+    return -1;
+  }
+
+  if (msg.body.s32 < 0) {
+    errno = -msg.body.s32;
+    return -1;
+  }
+  
+  return 0;
+}

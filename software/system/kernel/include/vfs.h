@@ -6,6 +6,13 @@
 #ifndef _vfs_h_
 #define _vfs_h_
 
+
+// temporary !
+struct stat {
+  dev_t *st_rdev;
+};
+
+
 struct vfs {
   struct vfs *vfs_next;            /* next vfs in list */
   const struct vfsops *vfs_op;           /* operations on vfs */
@@ -65,7 +72,7 @@ struct vnodeops {
   off_t (*vn_lseek)(struct vnode *pvn, off_t offset, int whence);
   int (*vn_ioctl)(struct vnode *pvn, int request, mem_va_t ptr, pid_t pid);
   //  int (*vn_select)();
-  //  int (*vn_getattr)();
+  int (*vn_getattr)(struct vnode *pvn, struct stat *pto);
   //  int (*vn_setattr)();
   //  int (*vn_access)();
   int (*vn_lookup)(struct vnode *pv, char *nm, struct vnode **ppv, pid_t pid);

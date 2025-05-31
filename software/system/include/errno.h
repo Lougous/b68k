@@ -6,7 +6,7 @@ extern int errno;		/* place where the error numbers go */
 
 #define	EPERM		1	/* Operation not permitted */
 #define	ENOENT          2	/* No such file or directory */
-#define	EACCESS		5
+#define	EACCES		5
 #define E2BIG           7       /* Arg list too long */
 #define	EBADF		9	/* Bad file number */
 #define ENOMEM          12      /* Out of memory */

@@ -419,6 +419,14 @@ static int _vn_inactive (struct vnode *pvn)
   return 0;
 }
 
+static int _vn_getattr (struct vnode *pvn, struct stat *pto)
+{
+  struct devnode *pdn = (struct devnode *)&(pvn->v_data[0]);
+  pto->st_rdev = pdn->pdev;
+  return -1;
+}
+
+
 const struct vnodeops _devfs_vnodeops = {
   .vn_open     = _vn_open,
   .vn_close    = _vn_close,
@@ -427,7 +435,7 @@ const struct vnodeops _devfs_vnodeops = {
   .vn_lseek    = _vn_lseek,
   .vn_ioctl    = _vn_ioctl,
   //  int (*vn_select)();
-  //  int (*vn_getattr)();
+  .vn_getattr  = _vn_getattr,
   //  int (*vn_setattr)();
   //  int (*vn_access)();
   .vn_lookup   = _vn_lookup,

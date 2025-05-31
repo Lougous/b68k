@@ -877,6 +877,11 @@ static int _fnode_inactive (struct vnode *pvn)
   return 0;
 }
 
+static int _fnode_getattr (struct vnode *pvn, struct stat *pto)
+{
+  // TODO
+  return -1;
+}
 
 
 const struct vnodeops _fat_vnodeops = {
@@ -887,7 +892,7 @@ const struct vnodeops _fat_vnodeops = {
   .vn_lseek    = _fnode_lseek,
   .vn_ioctl    = _fnode_ioctl,
   //  int (*vn_select)();
-  //  int (*vn_getattr)();
+  .vn_getattr  = _fnode_getattr,
   //  int (*vn_setattr)();
   //  int (*vn_access)();
   .vn_lookup   = _fnode_lookup,

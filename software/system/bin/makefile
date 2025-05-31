@@ -22,7 +22,7 @@ LDLIBS=-lc -lgcc
 OBJCOPY=${XCROOT}objcopy
 OBJDUMP=${XCROOT}objdump
 
-BIN=ls sh cat init test
+BIN=ls sh cat init test mount
 
 # entries
 all:	libc ${BIN}
@@ -36,6 +36,7 @@ sh:	sh.o crt0.o
 cat:	cat.o crt0.o
 init:	init.o crt0.o
 test:	test.o crt0.o
+mount:	mount.o crt0.o
 
 clean:
 	make -C ../lib/libc clean

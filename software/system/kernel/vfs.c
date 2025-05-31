@@ -274,34 +274,69 @@ int _lookuppn (char *nm, struct vnode **ppv, pid_t pid)
   return 0;
 }
 
+#define MOUNT_DEBUG  K_DEBUG_LEVEL
+
 static void _vfs_mount (pid_t pid, message_t *msg)
 {
   message_t resp = { .body.u32 = 0 };  // OK
   
-  if (proc_get_uid(pid) != PROC_UID_KERNEL && proc_get_uid(pid) != PROC_UID_ROOT ) {
+  if ((proc_get_uid(pid) != PROC_UID_KERNEL) && (proc_get_uid(pid) != PROC_UID_ROOT)) {
+    K_PRINTF(MOUNT_DEBUG, "vfs: PID-%d: vfs_mount: EPERM\n", pid);
     resp.body.u32 = -EPERM;
   }
 
   // check parameters
-  char *path_to = msg->body.mount.path_to; // TODO use va_to_pa when allowed to some user
-  char *type = msg->body.mount.type; // TODO use va_to_pa when allowed to some user
-  char *dev = msg->body.mount.dev; // TODO use va_to_pa when allowed to some user
+  char *path_to = (char *)va_to_pa_str(pid, (mem_va_t)msg->body.mount.path_to, K_MAX_DIRNAME_LEN);
+  char *type = (char *)va_to_pa_str(pid, (mem_va_t)msg->body.mount.type, 8);
+  char *dev = (char *)va_to_pa_str(pid, (mem_va_t)msg->body.mount.dev, K_MAX_DIRNAME_LEN);
 
   if ((! path_to) || (! type) || (! dev)) {
+    K_PRINTF(MOUNT_DEBUG, "vfs: PID-%d: vfs_mount: EFAULT\n", pid);
     resp.body.u32 = -EFAULT;   // memory fault
     goto _vfs_mount_exit;
   }
 
-  // mount FS  
+  K_PRINTF(MOUNT_DEBUG, "vfs: PID-%d: vfs_mount: %s to %s (%s)\n", pid, dev, path_to, type);
+
+  // get a free VFS
   struct vfs *pvfs = _vfs_free_vfs_list;
   
   if (! pvfs) {
+    K_PRINTF(MOUNT_DEBUG, "vfs: PID-%d: vfs_mount: ENOMEM\n", pid);
     resp.body.u32 = -ENOMEM;   // out of resources
     goto _vfs_mount_exit;
   }
 
-  // mount function with dedicated function to the specified type
-  dev_t *pdev = dev_get(dev);
+  // get device to mount
+  dev_t *pdev;
+
+  if (proc_get_uid(pid) == PROC_UID_KERNEL) {
+    // kernel specifies device name (root filesystem device cannot be specified as /dev/...)
+    pdev = dev_get(dev);
+  } else {
+    // user specifies special file path (block device)
+    // get vnode for device
+    struct vnode *pvn_dev;
+    resp.body.u32 = _lookuppn(dev, &pvn_dev, pid);
+
+    if (resp.body.u32) {
+      K_PRINTF(MOUNT_DEBUG, "vfs: PID-%d: vfs_mount: path_to EACCES\n", pid);
+      resp.body.u32 = -EACCES;
+      goto _vfs_mount_exit;
+    }
+
+    if (pvn_dev->v_type != VBLK) {
+      K_PRINTF(MOUNT_DEBUG, "vfs: PID-%d: vfs_mount: path_to ENOTBLK\n", pid);
+      resp.body.u32 = -ENOTBLK;
+      goto _vfs_mount_exit;
+    }
+
+    // get dev_t
+    struct stat stats;
+    pvn_dev->v_op->vn_getattr(pvn_dev, &stats);
+
+    pdev = stats.st_rdev;
+  }
 
   int16_t (* pmount)(struct vfs *pvfs, dev_t *pdev) = 0;
 
@@ -315,14 +350,16 @@ static void _vfs_mount (pid_t pid, message_t *msg)
     }
   }
 
-  //  unknown type of FS
+  // unknown type of FS
   if (! pmount) {
-    resp.body.u32 = -ENODEV;   // out of resources
+    K_PRINTF(MOUNT_DEBUG, "vfs: PID-%d: vfs_mount: ENODEV\n", pid);
+    resp.body.u32 = -ENODEV;   // filesystemtype not available in the kernel
     goto _vfs_mount_exit;
   }
 
   // mount FS
   if (pmount(pvfs, pdev)) {
+    K_PRINTF(MOUNT_DEBUG, "vfs: PID-%d: vfs_mount: EINVAL (VFS mount)\n", pid);
     resp.body.u32 = -EINVAL;   // invalid FS
     goto _vfs_mount_exit;
   }
@@ -334,6 +371,7 @@ static void _vfs_mount (pid_t pid, message_t *msg)
   if (!pvn_root) {
     pvfs->vfs_op->vfs_unmount(pvfs);
     // TODO: might be other cause
+    K_PRINTF(MOUNT_DEBUG, "vfs: PID-%d: vfs_mount: EINVAL (root vnode)\n", pid);
     resp.body.u32 = -EINVAL;   // invalid FS
     goto _vfs_mount_exit;
   }
@@ -345,6 +383,7 @@ static void _vfs_mount (pid_t pid, message_t *msg)
       // root already mounted
       VN_RELE(pvn_root);
       pvfs->vfs_op->vfs_unmount(pvfs);
+      K_PRINTF(MOUNT_DEBUG, "vfs: PID-%d: vfs_mount: EBUSY (root)\n", pid);
       resp.body.u32 = -EBUSY;
       goto _vfs_mount_exit;
     }
@@ -362,6 +401,8 @@ static void _vfs_mount (pid_t pid, message_t *msg)
   if (resp.body.u32) {
     VN_RELE(pvn_root);
     pvfs->vfs_op->vfs_unmount(pvfs);
+    K_PRINTF(MOUNT_DEBUG, "vfs: PID-%d: vfs_mount: EACCES (path_to)\n", pid);
+    resp.body.u32 = -EACCES;
     goto _vfs_mount_exit;
   }
 
@@ -381,7 +422,7 @@ static void _vfs_mount (pid_t pid, message_t *msg)
   pvfs->vfs_next = _vfs_used_vfs_list;
   _vfs_used_vfs_list = pvfs;
 
-  K_PRINTF(3, "vfs: mounted %s at %s %Xh (%s)\n", dev, path_to, pvfs, type);
+  K_PRINTF(MOUNT_DEBUG, "vfs: PID-%d: mounted %s at %s %Xh (%s)\n", pid, dev, path_to, pvfs, type);
 
  _vfs_mount_exit:
   send(pid, &resp);
@@ -498,7 +539,7 @@ static void _vfs_getdents (pid_t pid, message_t *msg)
   mem_pa_t buf = va_to_pa(pid, (mem_va_t)msg->body.getdents.dirp, count);
   
   if (! buf) {
-    resp.body.s32 = -EACCESS;
+    resp.body.s32 = -EACCES;
     goto _vfs_getdents_exit;
   }
 
@@ -630,7 +671,7 @@ static void _vfs_read (pid_t pid, message_t *msg)
   
   } else {
     K_PRINTF(3, "vfs: PID-%i READ: EACCESS\n", pid);
-    resp.body.s32 = -EACCESS;
+    resp.body.s32 = -EACCES;
   }
   
   send(pid, &resp);
@@ -661,7 +702,7 @@ static void _vfs_write (pid_t pid, message_t *msg)
     }
 
   } else {
-    resp.body.s32 = -EACCESS;
+    resp.body.s32 = -EACCES;
   }
 
   send(pid, &resp);
@@ -779,10 +820,6 @@ static void _vfs_mkdir (pid_t pid, message_t *msg)
     goto _vfs_mkdir_exit;
   }
     
-  // not very clean to alterate user's memory space but avoids a copy
-  char bak_nxt = pa_path[len];
-  pa_path[len] = 0;
-
   // split full path in path + name to create
   ptr = len - 1;
   
@@ -798,16 +835,13 @@ static void _vfs_mkdir (pid_t pid, message_t *msg)
 
   struct vnode *pvn;
 
-  //if (ptr > 1) {
-    // not very clean to alterate user's memory space but avoids a copy
-    char bak = pa_path[len];
-    pa_path[len] = 0;
+  // not very clean to alterate user's memory space but avoids a copy
+  char bak = pa_path[len];
+  pa_path[len] = 0;
 
-    resp.body.s32 = _lookuppn(pa_path, &pvn, pid);
+  resp.body.s32 = _lookuppn(pa_path, &pvn, pid);
 
-    pa_path[len] = bak;
-    //} else {
-    //}
+  pa_path[len] = bak;
 
   if (resp.body.s32) {
     K_PRINTF(3, "vfs: PID-%i MKDIR: %i\n", pid, resp.body.s32);

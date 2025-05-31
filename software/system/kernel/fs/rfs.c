@@ -752,6 +752,13 @@ static int _rnode_inactive (struct vnode *pvn)
   return 0;
 }
 
+static int _rnode_getattr (struct vnode *pvn, struct stat *pto)
+{
+  // TODO
+  return -1;
+}
+
+
 const struct vnodeops _rfs_vnodeops = {
   .vn_open     = _rnode_open,
   .vn_close    = _rnode_close,
@@ -760,7 +767,7 @@ const struct vnodeops _rfs_vnodeops = {
   .vn_lseek    = _rnode_lseek,
   .vn_ioctl    = _rnode_ioctl,
   //  int (*vn_select)();
-  //  int (*vn_getattr)();
+  .vn_getattr  = _rnode_getattr,
   //  int (*vn_setattr)();
   //  int (*vn_access)();
   .vn_lookup   = _rnode_lookup,

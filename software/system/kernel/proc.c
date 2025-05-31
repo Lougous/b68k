@@ -434,6 +434,31 @@ mem_pa_t va_to_pa(pid_t pid, mem_va_t dst, int len)
   return dst + pptr->mem_ad;
 }
 
+mem_pa_t va_to_pa_str(pid_t pid, mem_va_t dst, u16_t maxlen)
+{
+  struct proc_desc_t *pptr = &_proc_table[pid].d;
+
+  if (dst >= pptr->mem_sz) {
+    return 0;
+  }
+
+  if ((dst + maxlen) > pptr->mem_sz) {
+    maxlen = pptr->mem_sz - dst;
+  }
+
+  char *pa = (char *)(dst + pptr->mem_ad);
+
+  while (*pa++) {
+    if (--maxlen == 0) {
+      // reach end without null char
+      return 0;
+    }
+  }
+
+  // null char found
+  return dst + pptr->mem_ad;
+}
+
 #define ALIGN32(a) ((((u32_t)a) + 3) & ~((u32_t)3))
 
 int proc_exec(pid_t pid, mem_pa_t argenvp, u16_t argenvlen, u16_t envoff)

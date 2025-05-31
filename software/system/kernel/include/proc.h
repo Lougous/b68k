@@ -32,6 +32,7 @@ extern void proc_yield();
 extern u16_t proc_get_sig(pid_t pid);
   
 extern mem_pa_t va_to_pa(pid_t pid, mem_va_t dst, int len);
+extern mem_pa_t va_to_pa_str(pid_t pid, mem_va_t dst, u16_t maxlen);
 
 #define PROC_PID_SYSTEM_TASK   ((pid_t) 0)
 #define PROC_PID_NONE          ((pid_t) -1)

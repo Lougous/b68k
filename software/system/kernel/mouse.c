@@ -85,16 +85,22 @@ void mouse_task ()
   // register hooks/interrupts
   irq_register_interrupt(IRQ_MOUSE, _mouse_interrupt);
   irq_enable_interrupt(IRQ_MOUSE);
-  
-  // main loop
-  static message_t msg_out;
-  pid_t clock_pid = proc_get_pid("clock");
+
+  // get clock process PID
+  pid_t clock_pid = PROC_PID_NONE;
+
+  while (clock_pid == PROC_PID_NONE) {
+    clock_pid = proc_get_pid("clock");
+  }
 
   // post 1st mon event
+  static message_t msg_out;
+
   msg_out.type     = SLEEP;
   msg_out.body.u32 = K_MOUSE_TIMOUT_MS;
   send(clock_pid, &msg_out);
   
+  // main loop
   while (1) {
     static message_t msg;
 

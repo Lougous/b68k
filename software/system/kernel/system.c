@@ -68,30 +68,20 @@ static int _serial_getchar(void)
   return 0;
 }
 
-static u8_t _tp_buf[80];
-static u16_t _tp_len;
-
-static int _tty_putchar(int c)
+static int _system_message(const char *msg)
 {
-  _serial_putchar(c);
+  message_t msg_out;
 
-  _tp_buf[_tp_len++] = (u8_t)c;
+  // copy to debug serial
+  K_PRINTF(0, "%s", msg);
 
-  if ((u8_t)c == '\n' || _tp_len == sizeof(_tp_buf)) {
-    // need to flush
-    static message_t msg_out;
-
-    msg_out.type                  = DEV_WRITE;
-    msg_out.body.dev_write.minor  = 0;  // to TTY0
-    msg_out.body.dev_write.count  = _tp_len;
-    msg_out.body.dev_write.src    = _tp_buf;
-
-    // need for send+receive to avoid loss of message
-    sendreceive(_tty_pid, &msg_out, O_SEND | O_RECV);
-
-    // reset buffer
-    _tp_len = 0;
-  }
+  msg_out.type                  = DEV_WRITE;
+  msg_out.body.dev_write.minor  = 0;  // to TTY0
+  msg_out.body.dev_write.count  = strlen(msg);
+  msg_out.body.dev_write.src    = (char *)msg;
+  
+  // need for send+receive to avoid loss of message
+  sendreceive(_tty_pid, &msg_out, O_SEND | O_RECV);
   
   return 0;
 }
@@ -133,9 +123,9 @@ u32_t _k_exec_buf[(K_PROC_ARGS_SIZE+3) / 4];  // TODO: ARG_MAX in limits.h
 // root file system boot list (ordered)
 const char * const _root_boot_list[] = {
   // device, file system (0=auto, for disk partitions only)
-  //  "sda0",   0,
-  //  "sdb0",   0,
   "serial", "rfs",
+  "sda0",   "fat",
+  "sdb0",   "fat",
   0
 };
 
@@ -348,7 +338,9 @@ void system_task (void)
   _POST_code(0xB);
   K_PRINTF(2, "starting system task\n");
 
-  /* create tasks */
+  //////////////////////////////////////////////////////////////////////////////
+  // create tasks
+  //////////////////////////////////////////////////////////////////////////////
   _POST_code(0xC);
 
   // start with tty task, so that message can be displayed ASAP on screen
@@ -360,8 +352,6 @@ void system_task (void)
 #ifdef K_HAS_AV_BOARD
   _tty_pid = proc_create_task(4, "tty", tty_task, tty_stack, _TTY_STACK_SIZE);
   while (proc_get_state(_tty_pid) != PROC_STATE_BLOCKED) proc_yield();
-  _tp_len = 0;
-  __stdout_msg_struct.putchar = _tty_putchar;
 #endif
 
   /* be careful with process IDs (no duplication) */
@@ -391,7 +381,9 @@ void system_task (void)
 
   static message_t msg;
 
-  // mount rout file system
+  //////////////////////////////////////////////////////////////////////////////
+  // mount root file system
+  //////////////////////////////////////////////////////////////////////////////
   u8_t root_mounted = 0;
 
   K_PRINTF(2, "mounting root file sytem\n");
@@ -422,7 +414,7 @@ void system_task (void)
   }
     
   if (!root_mounted) {
-    K_PRINTF(0, "root mounting failed, system startup aborted\n");
+    _system_message("root mounting failed, system startup aborted\n");
     goto abort;
   }
 

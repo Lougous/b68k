@@ -99,7 +99,7 @@ static struct dev *_dev_register (const char *name, u16_t major, u16_t minor)
     return 0;
   }
 
-  //K_PRINTF(0, "dev: %s: register device %Xh\n", name, dev_id);
+  K_PRINTF(1, "dev: %s: register device %Xh\n", name, dev_id);
   
   return &_dev_list[dev];
 }

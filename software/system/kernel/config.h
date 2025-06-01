@@ -13,7 +13,7 @@
 #define K_VERSION_MINOR  21
 
 /* kernel debug / verbose level */
-#define K_DEBUG_LEVEL  1
+#define K_DEBUG_LEVEL  0
 
 /* hardware configuration */
 #define K_HAS_AV_BOARD

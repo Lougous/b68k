@@ -428,7 +428,7 @@ void system_task (void)
   sendreceive(vfs_pid, &msg, O_SEND | O_RECV);
 
   if (msg.body.u32 != 0) {
-    K_PRINTF(0, "failed to create /dev, system startup aborted\n");
+    _system_message("failed to create /dev, system startup aborted\n");
     goto abort;
   }
 #endif
@@ -444,7 +444,7 @@ void system_task (void)
   sendreceive(vfs_pid, &msg, O_SEND | O_RECV);
 
   if (msg.body.u32 != 0) {
-    K_PRINTF(0, "devfs mounting failed, system startup aborted\n");
+    _system_message("devfs mounting failed, system startup aborted\n");
     goto abort;
   }
 
@@ -468,7 +468,7 @@ void system_task (void)
   //const u16_t envoff = offsetof(struct argenv, envpnp);
       
   if (proc_exec(init_pid, (mem_pa_t)&argenv, sizeof(struct argenv), 0 /* no env */) < 0) {
-    K_PRINTF(0, "unable to load '%s'\n", K_INIT_FILENAME);
+    _system_message("unable to load "K_INIT_FILENAME);
   } else {
     // wake up init process
     proc_sig(init_pid, SIGALRM);
@@ -738,11 +738,13 @@ void k_reset (void) {
 	
 void _POST_code(u8_t c)
 {
+#if K_DEBUG_LEVEL > 0
   u16_t lbkp = k_lock();
-
+  u8_t _ad_save = B68K_MFP->ad;
   B68K_MFP->ad = B68K_MFP_REG_POST;
   B68K_MFP->dt = c;
-
+  B68K_MFP->ad = _ad_save;
   k_unlock(lbkp);
+#endif
 }
 

@@ -20,7 +20,7 @@
 #define K_HAS_IO_BOARD
 
 /* file name for init process executable */
-#define K_INIT_FILENAME  "/init"
+#define K_INIT_FILENAME  "/sbin/init"
 
 /* kernel space stack size */
 #define K_STACK_BYTES  0x2000

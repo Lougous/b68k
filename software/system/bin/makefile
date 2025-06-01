@@ -22,11 +22,15 @@ LDLIBS=-lc -lgcc
 OBJCOPY=${XCROOT}objcopy
 OBJDUMP=${XCROOT}objdump
 
-BIN=ls sh cat init printenv mount
+BIN=ls sh cat printenv
+SBIN=init mount
 
 # entries
-all:	libc ${BIN}
-	mv ${BIN} build/
+all:	libc ${BIN} ${SBIN}
+	mkdir -p build/bin
+	mv ${BIN} build/bin
+	mkdir -p build/sbin
+	mv ${SBIN} build/sbin
 
 libc:
 	make -C ../lib/libc

@@ -42,7 +42,7 @@ int main (int argc, char *argv[])
     } else if (sh_pid == 0) {
       // child
       // start shell user process
-      char *args[] = { "/sh", (char*)0 };
+      char *args[] = { "/bin/sh", (char*)0 };
 
       execve(args[0], args, (char**)0);
 

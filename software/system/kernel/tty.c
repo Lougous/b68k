@@ -208,7 +208,7 @@ void tty_task ()
   int ch;
 
   if (_gfx_ready) {
-    K_PRINTF(0, "TTY: loading font\n");
+    K_PRINTF(2, "TTY: loading font\n");
   
     const u32_t *src = (u32_t *)font_8x10;
     u32_t *dst = (u32_t *)(B68K_AV_VRAM_ADDRESS + FONT_ADDR);
@@ -226,7 +226,7 @@ void tty_task ()
   //////////////////////////////////////////////////////////////////////////////
   // init TTY data
   //////////////////////////////////////////////////////////////////////////////
-  K_PRINTF(0, "TTY: terminals setup\n");
+  K_PRINTF(2, "TTY: terminals setup\n");
   memset(_tty_table, 0, sizeof(_tty_table));
   
   u8_t tty;
@@ -267,7 +267,7 @@ void tty_task ()
   //////////////////////////////////////////////////////////////////////////////
   // setup frame buffer
   //////////////////////////////////////////////////////////////////////////////
-  K_PRINTF(0, "TTY: frame buffer setup\n");
+  K_PRINTF(2, "TTY: frame buffer setup\n");
   
   if (_gfx_ready) {
     /*    B68K_AV_FLEX->rbcfg0_vbk = 0;
@@ -327,7 +327,7 @@ void tty_task ()
   //////////////////////////////////////////////////////////////////////////////
   // display banner
   //////////////////////////////////////////////////////////////////////////////
-  K_PRINTF(0, "TTY: ready\n");
+  K_PRINTF(2, "TTY: ready\n");
 
   {
     const struct _IO_FILE f = {

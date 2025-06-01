@@ -12,6 +12,8 @@
 #include <dirent.h>
 #include <syscall.h>
 #include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/sysmacros.h>
 #include <errno.h>
 
 #include <stdio.h>
@@ -29,7 +31,7 @@
 // private data for struct vfs (.vfs_data)
 struct rfs {
   // device
-  struct dev *dev;
+  dev_t dev;
   // root rnode
   rnode_t root;
   // list of vnodes
@@ -78,16 +80,16 @@ static u8_t _check_msg(u8_t *msg)
   return 1;
 }
 
-static u8_t _receive_msg(struct dev *pdev, u8_t *buf)
+static u8_t _receive_msg(dev_t dev, u8_t *buf)
 {
   message_t msg;
   
   msg.type = DEV_READ;
-  msg.body.dev_read.handle = pdev->handle;
+  msg.body.dev_read.minor = minor(dev);
   msg.body.dev_read.dst = buf;
   msg.body.dev_read.count = 2;
   
-  sendreceive(pdev->drv, &msg, O_SEND | O_RECV);
+  sendreceive(major(dev), &msg, O_SEND | O_RECV);
 
   if (msg.body.s32 != 2) return 0;
   if (buf[0] != 0x55) return 0;
@@ -97,11 +99,11 @@ static u8_t _receive_msg(struct dev *pdev, u8_t *buf)
   if (len > (RFS_MAX_READ + 2)) return 0;
   
   msg.type = DEV_READ;
-  msg.body.dev_read.handle = pdev->handle;
+  msg.body.dev_read.minor = minor(dev);
   msg.body.dev_read.dst = buf+2;
   msg.body.dev_read.count = len + 2;
 
-  sendreceive(pdev->drv, &msg, O_SEND | O_RECV);
+  sendreceive(major(dev), &msg, O_SEND | O_RECV);
 
   if (msg.body.s32 != (len + 2)) return 0;
 
@@ -176,7 +178,7 @@ static struct vnode *_allocate_vnode(struct vfs *pvfs, rnode_t rnode)
 ////////////////////////////////////////////////////////////////////////////////
 const struct vfsops _rfs_vfs_op;
 
-int rfs_mount (struct vfs *pvfs, struct dev *pdev)
+int rfs_mount (struct vfs *pvfs, dev_t dev)
 {
   message_t msg;
 
@@ -184,29 +186,29 @@ int rfs_mount (struct vfs *pvfs, struct dev *pdev)
   
   // open device
   msg.type = DEV_OPEN;
-  msg.body.dev_open.handle = pdev->handle;
+  msg.body.dev_open.minor = minor(dev);
   
-  sendreceive(pdev->drv, &msg, O_SEND | O_RECV);
+  sendreceive(major(dev), &msg, O_SEND | O_RECV);
 
   // send reset command
   rfs_creset_t creset = { 0x55, 0x1, 'I', 'I', 0xAA };
   
   msg.type = DEV_WRITE;
-  msg.body.dev_write.handle = pdev->handle;
+  msg.body.dev_write.minor = minor(dev);
   msg.body.dev_write.src = creset;
   msg.body.dev_write.count = sizeof(creset);
  
-  sendreceive(pdev->drv, &msg, O_SEND | O_RECV);
+  sendreceive(major(dev), &msg, O_SEND | O_RECV);
 
   // get reset command return
   rfs_areset_t areset;
 
   msg.type = DEV_READ;
-  msg.body.dev_read.handle = pdev->handle;
+  msg.body.dev_read.minor = minor(dev);
   msg.body.dev_read.dst = areset;
   msg.body.dev_read.count = sizeof(areset);
   
-  sendreceive(pdev->drv, &msg, O_SEND | O_RECV);
+  sendreceive(major(dev), &msg, O_SEND | O_RECV);
   
   //_dump_msg(_buf, 5);
 
@@ -218,7 +220,7 @@ int rfs_mount (struct vfs *pvfs, struct dev *pdev)
 
     // initialize private data
     struct rfs *prfs = (struct rfs *)&(pvfs->vfs_data[0]);
-    prfs->dev = pdev;
+    prfs->dev = dev;
     prfs->root = rfs_read_u32le(areset + 3);
     prfs->pvn = 0;
     
@@ -278,7 +280,7 @@ static int _rnode_open(struct vnode *pvn, int flags, pid_t pid)
   struct rfs *prfs = (struct rfs *)&(pvfs->vfs_data[0]);
   struct rnode *prn = (struct rnode *)&(pvn->v_data[0]);
 
-  struct dev *pdev = prfs->dev;
+  dev_t dev = prfs->dev;
   
   message_t msg;
 
@@ -294,21 +296,21 @@ static int _rnode_open(struct vnode *pvn, int flags, pid_t pid)
   copen[10] = 0xAA;
  
   msg.type = DEV_WRITE;
-  msg.body.dev_write.handle = pdev->handle;
+  msg.body.dev_write.minor = minor(dev);
   msg.body.dev_write.src = &copen;
   msg.body.dev_write.count = sizeof(copen);
  
-  sendreceive(pdev->drv, &msg, O_SEND | O_RECV);
+  sendreceive(major(dev), &msg, O_SEND | O_RECV);
 
   // get open command return
   rfs_aopen_t aopen;
   
   msg.type = DEV_READ;
-  msg.body.dev_read.handle = pdev->handle;
+  msg.body.dev_read.minor = minor(dev);
   msg.body.dev_read.dst = &aopen;
   msg.body.dev_read.count = sizeof(aopen);
   
-  sendreceive(pdev->drv, &msg, O_SEND | O_RECV);
+  sendreceive(major(dev), &msg, O_SEND | O_RECV);
  
   if (msg.body.s32 == sizeof(aopen) && _check_msg((u8_t *)&aopen) && aopen[3] == 1) {
 
@@ -337,7 +339,7 @@ static int _rnode_close(struct vnode *pvn, pid_t pid)
   struct rfs *prfs = (struct rfs *)&(pvfs->vfs_data[0]);
   struct rnode *prn = (struct rnode *)&(pvn->v_data[0]);
 
-  struct dev *pdev = prfs->dev;
+  dev_t dev = prfs->dev;
   
   message_t msg;
 
@@ -352,21 +354,21 @@ static int _rnode_close(struct vnode *pvn, pid_t pid)
   cclose[8] = 0xAA;
 
   msg.type = DEV_WRITE;
-  msg.body.dev_write.handle = pdev->handle;
+  msg.body.dev_write.minor = minor(dev);
   msg.body.dev_write.src = cclose;
   msg.body.dev_write.count = sizeof(cclose);
  
-  sendreceive(pdev->drv, &msg, O_SEND | O_RECV);
+  sendreceive(major(dev), &msg, O_SEND | O_RECV);
 
   // get open command return
   rfs_aclose_t aclose;
   
   msg.type = DEV_READ;
-  msg.body.dev_read.handle = pdev->handle;
+  msg.body.dev_read.minor = minor(dev);
   msg.body.dev_read.dst = aclose;
   msg.body.dev_read.count = sizeof(aclose);
   
-  sendreceive(pdev->drv, &msg, O_SEND | O_RECV);
+  sendreceive(major(dev), &msg, O_SEND | O_RECV);
 
   if (msg.body.s32 == sizeof(aclose) && _check_msg(aclose)) {
     if (aclose[3] == 1) {
@@ -392,7 +394,7 @@ static size_t _rnode_read (struct vnode *pvn, void *buf, size_t count, pid_t pid
   struct rfs *prfs = (struct rfs *)&(pvfs->vfs_data[0]);
   struct rnode *prn = (struct rnode *)&(pvn->v_data[0]);
 
-  struct dev *pdev = prfs->dev;
+  dev_t dev = prfs->dev;
   
   message_t msg;
   u8_t *dst = (u8_t *)buf;
@@ -419,17 +421,17 @@ static size_t _rnode_read (struct vnode *pvn, void *buf, size_t count, pid_t pid
     cread[13] = 0xAA;
     
     msg.type = DEV_WRITE;
-    msg.body.dev_write.handle = pdev->handle;
+    msg.body.dev_write.minor = minor(dev);
     msg.body.dev_write.src = &cread;
     msg.body.dev_write.count = sizeof(cread);
   
-    sendreceive(pdev->drv, &msg, O_SEND | O_RECV);
+    sendreceive(major(dev), &msg, O_SEND | O_RECV);
 
     // get read command return
     u8_t buf[RFS_MAX_READ+sizeof(rfs_aread_ko_t)];
 
     // header + CID + status
-    if (_receive_msg(pdev, buf) == 0) {
+    if (_receive_msg(dev, buf) == 0) {
       K_PRINTF(2, "rfs: aread: bad frame\n");
       break;
     }
@@ -494,7 +496,7 @@ static int _rnode_getdents (struct vnode *pvn, char *buf, unsigned int count, pi
   struct rfs *prfs = (struct rfs *)&(pvfs->vfs_data[0]);
   struct rnode *prn = (struct rnode *)&(pvn->v_data[0]);
 
-  struct dev *pdev = prfs->dev;
+  dev_t dev = prfs->dev;
 
   message_t msg;
 
@@ -509,21 +511,21 @@ static int _rnode_getdents (struct vnode *pvn, char *buf, unsigned int count, pi
   cgetdents[9] = 0xAA;
   
   msg.type = DEV_WRITE;
-  msg.body.dev_write.handle = pdev->handle;
+  msg.body.dev_write.minor = minor(dev);
   msg.body.dev_write.src = &cgetdents;
   msg.body.dev_write.count = sizeof(cgetdents);
   
-  sendreceive(pdev->drv, &msg, O_SEND | O_RECV);
+  sendreceive(major(dev), &msg, O_SEND | O_RECV);
 
   // get getdents answer
   rfs_agetdents_t agetdents;
 
   msg.type = DEV_READ;
-  msg.body.dev_read.handle = pdev->handle;
+  msg.body.dev_read.minor = minor(dev);
   msg.body.dev_read.dst = &agetdents;
   msg.body.dev_read.count = sizeof(agetdents);
   
-  sendreceive(pdev->drv, &msg, O_SEND | O_RECV);
+  sendreceive(major(dev), &msg, O_SEND | O_RECV);
 
   // answer format:
   // 0: 55h
@@ -585,7 +587,7 @@ static int _rnode_mkdir (struct vnode *pvn, char *nm, pid_t pid)
   struct rfs *prfs = (struct rfs *)&(pvfs->vfs_data[0]);
   struct rnode *prn = (struct rnode *)&(pvn->v_data[0]);
 
-  struct dev *pdev = prfs->dev;
+  dev_t dev = prfs->dev;
 
   message_t msg;
 
@@ -609,21 +611,21 @@ static int _rnode_mkdir (struct vnode *pvn, char *nm, pid_t pid)
   cmkdir[10+RFS_MAX_NAME_LEN] = 0xAA;
   
   msg.type = DEV_WRITE;
-  msg.body.dev_write.handle = pdev->handle;
+  msg.body.dev_write.minor = minor(dev);
   msg.body.dev_write.src = &cmkdir;
   msg.body.dev_write.count = sizeof(cmkdir);
  
-  sendreceive(pdev->drv, &msg, O_SEND | O_RECV);
+  sendreceive(major(dev), &msg, O_SEND | O_RECV);
 
   // get mkdir command return
   rfs_amkdir_t amkdir;
   
   msg.type = DEV_READ;
-  msg.body.dev_read.handle = pdev->handle;
+  msg.body.dev_read.minor = minor(dev);
   msg.body.dev_read.dst = &amkdir;
   msg.body.dev_read.count = sizeof(amkdir);
   
-  sendreceive(pdev->drv, &msg, O_SEND | O_RECV);
+  sendreceive(major(dev), &msg, O_SEND | O_RECV);
 
   if (msg.body.s32 == sizeof(amkdir) && _check_msg(amkdir) && amkdir[3] == 0) {
     K_PRINTF(3, "rfs: mkdir '%s'\n", nm);
@@ -642,7 +644,7 @@ static int _rnode_lookup(struct vnode *pvn, char *nm, struct vnode **ppv, pid_t 
   struct rfs *prfs = (struct rfs *)&(pvfs->vfs_data[0]);
   struct rnode *prn = (struct rnode *)&(pvn->v_data[0]);
 
-  struct dev *pdev = prfs->dev;
+  dev_t dev = prfs->dev;
   
   message_t msg;
   int len = strlen(nm);
@@ -664,21 +666,21 @@ static int _rnode_lookup(struct vnode *pvn, char *nm, struct vnode **ppv, pid_t 
   clookup[9+RFS_MAX_NAME_LEN] = 0xAA;
 
   msg.type = DEV_WRITE;
-  msg.body.dev_write.handle = pdev->handle;
+  msg.body.dev_write.minor = minor(dev);
   msg.body.dev_write.src = &clookup;
   msg.body.dev_write.count = sizeof(clookup);
  
-  sendreceive(pdev->drv, &msg, O_SEND | O_RECV);
+  sendreceive(major(dev), &msg, O_SEND | O_RECV);
 
   // get lookup command return
   rfs_alookup_t alookup;
   
   msg.type = DEV_READ;
-  msg.body.dev_read.handle = pdev->handle;
+  msg.body.dev_read.minor = minor(dev);
   msg.body.dev_read.dst = &alookup;
   msg.body.dev_read.count = sizeof(alookup);
   
-  sendreceive(pdev->drv, &msg, O_SEND | O_RECV);
+  sendreceive(major(dev), &msg, O_SEND | O_RECV);
 
   rnode_t rn = rfs_read_u32le(alookup + 3);
   u8_t type = alookup[7];

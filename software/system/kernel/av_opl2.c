@@ -11,6 +11,7 @@
 #include <syscall.h>
 #include <errno.h>
 #include <sys/opl2.h>
+#include <sys/types.h>
 
 #include "b68k.h"
 

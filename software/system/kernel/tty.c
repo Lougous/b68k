@@ -10,6 +10,7 @@
 #include <syscall.h>
 #include <errno.h>
 #include <sys/tty.h>
+#include <sys/types.h>
 
 #include "irq.h"
 #include "b68k.h"
@@ -257,7 +258,7 @@ void tty_task ()
       tty_name[3] = '0' + tty;
 
       // use pointer to TTY structure as handle 
-      dev_register_char(tty_name, _tty_pid, &_tty_table[tty]);
+      dev_register_char(tty_name, _tty_pid, tty);
     }
 
     k_unlock(lbkp);
@@ -393,85 +394,98 @@ void tty_task ()
 	  {
 	    s32_t count = msg.body.dev_write.count;
 	    u8_t *pc = msg.body.dev_write.src;
-	    struct tty_attr_t *pt = (struct tty_attr_t *)msg.body.dev_write.handle;
 
-	    // default to TTY0
-	    if (! pt) pt = &_tty_table[0];
-	    
-	    _gpu_start_dl();
+	    if (msg.body.dev_write.minor < K_TTY_COUNT) {
+	      struct tty_attr_t *pt = &_tty_table[msg.body.dev_write.minor];
+
+	      _gpu_start_dl();
 	  
-	    while (count--) {
-	      _tty_putc(pt, *pc++);
-	    }
+	      while (count--) {
+		_tty_putc(pt, *pc++);
+	      }
 
-	    cursor_reset = 1;
+	      cursor_reset = 1;
   
-	    msg_out.body.s32 = msg.body.dev_write.count;
+	      msg_out.body.s32 = msg.body.dev_write.count;
+	    } else {
+	      msg_out.body.s32 = -EBADF;
+	    }
+	    
 	    send(from, &msg_out);
 	  }
 	  break;
 
 	case DEV_READ:
 	  {
-	    struct tty_attr_t *pt = (struct tty_attr_t *)msg.body.dev_read.handle;
 	    int len = 0;
 	    u8_t *dst = msg.body.dev_read.dst;
 
-	    if (pt->i_nline && msg.body.dev_read.count) {
-	      /* something to send to receiver process ? */
-	      while (pt->i_rp != pt->i_wp) {
-		u8_t c = pt->i_buf[pt->i_rp++];
+	    if (msg.body.dev_read.minor < K_TTY_COUNT) {
+	      struct tty_attr_t *pt = &_tty_table[msg.body.dev_read.minor];
 	      
-		*dst++ = c;
-		len++;
-
-		// TODO: raw mode
-		if (c == '\n') {
-		  /* end of line */
-		  pt->i_nline--;
-		  break;
-		} else if (len == msg.body.dev_read.count) {
-		  /* read buffer full */
-		  break;
+	      if (pt->i_nline && msg.body.dev_read.count) {
+		/* something to send to receiver process ? */
+		while (pt->i_rp != pt->i_wp) {
+		  u8_t c = pt->i_buf[pt->i_rp++];
+		  
+		  *dst++ = c;
+		  len++;
+		  
+		  // TODO: raw mode
+		  if (c == '\n') {
+		    /* end of line */
+		    pt->i_nline--;
+		    break;
+		  } else if (len == msg.body.dev_read.count) {
+		    /* read buffer full */
+		    break;
+		  }
 		}
 	      }
-	    }
 
-	    msg_out.body.s32 = len;
+	      msg_out.body.s32 = len;
+	    } else {
+	      msg_out.body.s32 = -EBADF;
+	    }
+	      
 	    send(from, &msg_out);
 	  }  
 	  break;
 
 	case DEV_IOCTL:
 	  {
-	    struct tty_attr_t *pt = (struct tty_attr_t *)msg.body.dev_read.handle;
-
-	    if (msg.body.dev_ioctl.request == TTY_IOCTL_KBD_POS) {
+	    if (msg.body.dev_ioctl.minor < K_TTY_COUNT) {
+	      if (msg.body.dev_ioctl.request == TTY_IOCTL_KBD_POS) {
 	    
-	      mem_pa_t pa = va_to_pa(msg.body.dev_ioctl.pid,
-				     (mem_va_t)msg.body.dev_ioctl.va_ptr,
-				     sizeof(tty_ioctl_kbd_pos_t));
+		mem_pa_t pa = va_to_pa(msg.body.dev_ioctl.pid,
+				       (mem_va_t)msg.body.dev_ioctl.va_ptr,
+				       sizeof(tty_ioctl_kbd_pos_t));
 
-	      if (pa) {
-		tty_ioctl_kbd_pos_t *ptr = (tty_ioctl_kbd_pos_t *)pa;
-		u8_t i = 0;
+		if (pa) {
+		  tty_ioctl_kbd_pos_t *ptr = (tty_ioctl_kbd_pos_t *)pa;
+		  u8_t i = 0;
 
-		while (i < sizeof(ptr->buf)) {
-		  ptr->buf[i] = _kbd_keys_pos[i];
-		  i++;
+		  while (i < sizeof(ptr->buf)) {
+		    ptr->buf[i] = _kbd_keys_pos[i];
+		    i++;
+		  }
+
+		  msg_out.body.s32 = 0;
+		} else {
+		  K_PRINTF(2, "tty: error: IOCTL with bad address from %i\n", from);
+		  msg_out.body.s32 = EFAULT;
 		}
+	      } else if (msg.body.dev_ioctl.request == TTY_IOCTL_SET_FLAGS) {
+		struct tty_attr_t *pt = &_tty_table[msg.body.dev_ioctl.minor];
 
+		pt->flags = (u16_t)((u32_t)msg.body.dev_ioctl.va_ptr);
 		msg_out.body.s32 = 0;
 	      } else {
-		K_PRINTF(2, "tty: error: IOCTL with bad address from %i\n", from);
-		msg_out.body.s32 = EFAULT;
+		msg_out.body.s32 = EINVAL;
+		K_PRINTF(2, "tty: error: unknown IOCTL %Xh from %i\n", msg.body.dev_ioctl.request, from);
 	      }
-	    } else if (msg.body.dev_ioctl.request == TTY_IOCTL_SET_FLAGS) {
-	      pt->flags = (u16_t)((u32_t)msg.body.dev_ioctl.va_ptr);
-	      msg_out.body.s32 = 0;
 	    } else {
-	      msg_out.body.s32 = EINVAL;
-	      K_PRINTF(2, "tty: error: unknown IOCTL %Xh from %i\n", msg.body.dev_ioctl.request, from);
+	      msg_out.body.s32 = -EBADF;
 	    }
 	  
 	    send(from, &msg_out);

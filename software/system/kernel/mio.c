@@ -11,6 +11,7 @@
 #include <stddef.h>
 #include <types.h>
 #include <syscall.h>
+#include <sys/types.h>
 
 #include "mem.h"
 #include "proc.h"
@@ -25,12 +26,6 @@ extern u32_t clock_now();  // TODO header
 
 #define _K_MIO_SERIAL_TIMEOUT_MS 500
   
-static size_t _read (dev_read_msg_body_t *body);
-static size_t _write (dev_write_msg_body_t *body);
-static u32_t _open (dev_open_msg_body_t *body);
-static u16_t _spi_dev_probe ();
-void __attribute__ ((interrupt)) mio_interrupt (void);
-
 #define SD_CARD_TYPE_NONE    0
 #define SD_CARD_TYPE_V1      1
 #define SD_CARD_TYPE_V2      2
@@ -55,25 +50,47 @@ struct mio_drive_t _drive_b;
 struct mio_serial_t _serial;
 struct mio_i2c_t _i2c;
 
-// serial input ring buffer
 
-//struct mio_drive_t *_current_drive;
+#define _DRIVE_MASK     0x10
+#define _DRIVE_AB_MASK  0x18
 
-static u8_t _mbr[512];
+#define _DRIVE_A     (_DRIVE_MASK)
+#define _DRIVE_B     (_DRIVE_MASK | _DRIVE_AB_MASK)
 
-static void _disk_probe(struct mio_drive_t *pdrive, char *name)
+#define _MINOR_SERIAL   0
+#define _MINOR_I2C      1
+#define _MINOR_SDA      (_DRIVE_A | 0)
+#define _MINOR_SDA0     (_DRIVE_A | 1)
+#define _MINOR_SDA1     (_DRIVE_A | 2)
+#define _MINOR_SDA2     (_DRIVE_A | 3)
+#define _MINOR_SDA3     (_DRIVE_A | 4)
+#define _MINOR_SDB      (_DRIVE_B | 0)
+#define _MINOR_SDB0     (_DRIVE_B | 1)
+#define _MINOR_SDB1     (_DRIVE_B | 2)
+#define _MINOR_SDB2     (_DRIVE_B | 3)
+#define _MINOR_SDB3     (_DRIVE_B | 4)
+
+static size_t _read (dev_read_msg_body_t *body);
+static size_t _write (dev_write_msg_body_t *body);
+static u32_t _open (dev_open_msg_body_t *body);
+static u16_t _spi_dev_probe (struct mio_drive_t *pdrive);
+void __attribute__ ((interrupt)) mio_interrupt (void);
+
+static void _disk_probe(struct mio_drive_t *pdrive, char *name, u16_t minor)
 {
+  u8_t mbr[512];
+
   if (! _spi_dev_probe(pdrive)) return;
 
-  dev_open_msg_body_t omsg = { .handle = pdrive };
+  dev_open_msg_body_t omsg = { .minor = minor };
   
   _open(&omsg);
 
-  dev_read_msg_body_t rmsg = { .src_seek = 0, .dst = _mbr, .count = 512, .handle = pdrive };
+  dev_read_msg_body_t rmsg = { .src_seek = 0, .dst = mbr, .count = 512, .minor = minor };
   
   if (_read(&rmsg) != 512) return;
   
-  dev_register_disk(name, proc_current(), (void *)pdrive, _mbr);
+  dev_register_disk(name, proc_current(), minor, mbr);
 
   // TODO: close
 }
@@ -83,12 +100,12 @@ void mio_task (void)
   K_PRINTF(2, "MIO: IO memory %Xh\n", B68K_IO_ADDRESS);
 
   // SPI SD card disks
-  _disk_probe(&_drive_a, "sda");
-  _disk_probe(&_drive_b, "sdb");
+  _disk_probe(&_drive_a, "sda", _MINOR_SDA);
+  _disk_probe(&_drive_b, "sdb", _MINOR_SDB);
 
   // serial port
-  dev_register_char("serial", proc_current(), &_serial);
-  dev_register_char("i2c", proc_current(), &_i2c);
+  dev_register_char("serial", proc_current(), _MINOR_SERIAL);
+  dev_register_char("i2c", proc_current(), _MINOR_I2C);
 
   // setup RX buffer
   _serial.wptr = 0;
@@ -442,7 +459,7 @@ static u16_t _spi_sd_read_sector (struct mio_drive_t * pdrive,
   return 0;
 }
 
-static u16_t _spi_dev_probe (struct mio_drive_t * pdrive)
+static u16_t _spi_dev_probe (struct mio_drive_t *pdrive)
 {
   u16_t i;
   u8_t resp;
@@ -458,10 +475,10 @@ static u16_t _spi_dev_probe (struct mio_drive_t * pdrive)
   _spi_deselect();
 
   B68K_IO->ad = B68K_IO_REG_SPI_CTRL;
-  B68K_IO->dt    = B68K_IO_SPI_CLRBF_MASK | B68K_IO_SPI_CLRBF_TXR;
+  B68K_IO->dt = B68K_IO_SPI_CLRBF_MASK | B68K_IO_SPI_CLRBF_TXR;
 
   B68K_IO->ad = B68K_IO_REG_SPI_DATA;
-  B68K_IO->dt    = 0xff;
+  B68K_IO->dt = 0xff;
 
   for (i = 0; i < 9; i++) {
     B68K_IO->ad = B68K_IO_REG_SPI_DATA;
@@ -567,7 +584,7 @@ static u32_t _open (dev_open_msg_body_t *body)
 
 static size_t _read (dev_read_msg_body_t *body)
 {
-  if ((struct mio_serial_t *)body->handle == &_serial) {
+  if (body->minor == _MINOR_SERIAL) {
     u32_t count = body->count;
     size_t done = 0;
     u8_t *dst = (u8_t *)body->dst;
@@ -590,13 +607,13 @@ static size_t _read (dev_read_msg_body_t *body)
 
     return done;
 
-  } else if ((struct mio_i2c_t *)body->handle == &_i2c) {
+  } else if (body->minor == _MINOR_I2C) {
 
     return -1;
 
-  } else {
+  } else if (body->minor & _DRIVE_MASK) {
     // SPI
-    struct mio_drive_t * pdrive = (struct mio_drive_t *)body->handle;
+    struct mio_drive_t *pdrive = (body->minor & _DRIVE_AB_MASK) ? &_drive_b : &_drive_a;
   
     u32_t status;
   
@@ -608,6 +625,8 @@ static size_t _read (dev_read_msg_body_t *body)
       return SECTOR_SIZE;
     }
   
+    return -1;
+  } else {
     return -1;
   }
 }
@@ -627,7 +646,7 @@ static void _serial_putchar (unsigned char c)
 
 static size_t _write (dev_write_msg_body_t *body)
 {
-  if ((struct mio_serial_t *)body->handle == &_serial) {
+  if (body->minor == _MINOR_SERIAL) {
     int count = body->count;
     char *src = body->src;
 
@@ -637,11 +656,11 @@ static size_t _write (dev_write_msg_body_t *body)
 
     return body->count;
     
-  } else if ((struct mio_i2c_t *)body->handle == &_i2c) {
+  } else if (body->minor == _MINOR_I2C) {
 
     return -1;
 
-  } else {
+  } else if (body->minor & _DRIVE_MASK) {
     // SPI
     /*
     struct mio_drive_t * pdrive = (struct mio_drive_t *)body->handle;
@@ -656,7 +675,8 @@ static size_t _write (dev_write_msg_body_t *body)
       return SECTOR_SIZE;
     }
     */
-    
+    return -1;
+  } else {
     return -1;
   }
 }

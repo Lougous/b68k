@@ -100,30 +100,30 @@ typedef struct {
 #define DEV_IOCTL     0x0206
 
 typedef struct {
-  void *handle;
+  u16_t minor;
   off_t src_seek;
   void *dst;
   u32_t count;
 } dev_read_msg_body_t;
 
 typedef struct {
-  void *handle;
+  u16_t minor;
   void *src;
   off_t dst_seek;
   u32_t count;
 } dev_write_msg_body_t;
 
 typedef struct {
-  void *handle;
+  u16_t minor;
   int  flags;
 } dev_open_msg_body_t;
 
 typedef struct {
-  void *handle;
+  u16_t minor;
 } dev_close_msg_body_t;
 
 typedef struct {
-  void *handle;
+  u16_t minor;
   pid_t pid;
   int request;
   void *va_ptr;

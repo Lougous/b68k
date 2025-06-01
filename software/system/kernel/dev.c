@@ -9,6 +9,8 @@
 
 #include <string.h>
 #include <stdio.h>
+#include <sys/types.h>
+#include <sys/sysmacros.h>
 
 #include "config.h"
 #include "debug.h"
@@ -24,15 +26,14 @@ void dev_init (void)
   
   for (dev = 0; dev < K_DEV_COUNT; dev++) {
     strcpy(_dev_list[dev].name, "none");
-    _dev_list[dev].drv = 0;
-    _dev_list[dev].handle = 0;
+    _dev_list[dev].dev_id = 0;
     _dev_list[dev].attr.attr_type = DEV_ATTR_NONE;
   }
 }
 
 struct dev *dev_get (const char *name)
 {
-  u32_t dev;
+  u16_t dev;
 
   for (dev = 0; dev < K_DEV_COUNT; dev++) {
     struct dev *pdev = &_dev_list[dev];
@@ -45,7 +46,23 @@ struct dev *dev_get (const char *name)
   return 0;
 }
 
-char *dev_name (u32_t id)
+struct dev *dev_get_by_id(dev_t dev)
+{
+  u16_t i;
+
+  for (i = 0; i < K_DEV_COUNT; i++) {
+    struct dev *pdev = &_dev_list[i];
+
+    if (pdev->dev_id == dev) {
+      return pdev;
+    }
+  }
+
+  return 0;
+}
+  
+
+char *dev_name (u16_t id)
 {
   if ((id < K_DEV_COUNT) &&
       (_dev_list[id].attr.attr_type != DEV_ATTR_NONE)) {
@@ -56,65 +73,67 @@ char *dev_name (u32_t id)
 }
 
 
-static struct dev *_dev_register (const char *name, pid_t drv, void *handle)
+static struct dev *_dev_register (const char *name, u16_t major, u16_t minor)
 {
   u32_t dev;
+  dev_t dev_id = makedev(major, minor);
 
-  // get empty entry
-  for (dev = 0; dev < K_DEV_COUNT; dev++) {
-    if (_dev_list[dev].drv == 0) {
-      strcpy(_dev_list[dev].name, name);
-      _dev_list[dev].drv = drv;
-      _dev_list[dev].handle = handle;
+  {
+    u16_t lbkp = k_lock();
+  
+    // get empty entry
+    for (dev = 0; dev < K_DEV_COUNT; dev++) {
+      if (_dev_list[dev].dev_id == 0) {
+	strcpy(_dev_list[dev].name, name);
+	_dev_list[dev].dev_id = dev_id;
 
-      K_PRINTF(3, "%s: register device\n", name);
-      break;
+	break;
+      }
     }
+    k_unlock(lbkp);
   }
 
   if (dev == K_DEV_COUNT) {
-    K_PRINTF(3, "error: cannot register device (out of memory)\n");
+    K_PRINTF(0, "dev: error: cannot register device (out of memory)\n");
     k_panic();
     return 0;
   }
 
+  //K_PRINTF(0, "dev: %s: register device %Xh\n", name, dev_id);
+  
   return &_dev_list[dev];
 }
 
-struct dev *dev_register_char(const char *name, pid_t drv, void *handle)
+int dev_register_char(const char *name, pid_t maj, u16_t min)
 {
   struct dev *pdev;
 
-  if (! (pdev = _dev_register(name, drv, handle))) {
-    return 0;
+  if (! (pdev = _dev_register(name, maj, min))) {
+    return -1;
   }
-
-  pdev->handle = handle;
 
   pdev->attr.chardev.attr_type = DEV_ATTR_CHAR;
 
-  return pdev;
+  return 0;
 }
   
-u32_t dev_register_disk(const char *name, pid_t drv, void *handle, u8_t *mbr)
+int dev_register_disk(const char *name, pid_t maj, u16_t min, u8_t *mbr)
 {
   struct dev *pdev;
   u32_t pn;
 
-  if (! (pdev = _dev_register(name, drv, handle))) {
-    return 0;
+  if (! (pdev = _dev_register(name, maj, min++))) {
+    return -1;
   }
 
-  pdev->handle = handle;
-  
   pdev->attr.disk.attr_type   = DEV_ATTR_DISK;
   pdev->attr.disk.sector_size = 512;
   pdev->attr.disk.sector_cnt  = 0;  // TODO: need an ioctl
 
-  K_PRINTF(2, "%s: disk\n", name);
+  //  K_PRINTF(2, "dev: %s: disk\n", name);
 
   // executable marker
-  if (mbr[510] != 0x55 || mbr[511] != 0xAA) return 1;
+  if (mbr[510] != 0x55 || mbr[511] != 0xAA) return -1;
   
   // check partitions (up to four primary)
   for (pn = 0; pn < 4; pn++) {
@@ -142,7 +161,7 @@ u32_t dev_register_disk(const char *name, pid_t drv, void *handle, u8_t *mbr)
       xname[strlen(name)] = '0' + pn;
       xname[strlen(name)+1] = 0;
 
-      pdev = _dev_register(xname, drv, handle);
+      pdev = _dev_register(xname, maj, min++);
       
       if (pdev) {
 	pdev->attr.partition.attr_type    = DEV_ATTR_DISK_PARTITION;
@@ -150,7 +169,7 @@ u32_t dev_register_disk(const char *name, pid_t drv, void *handle, u8_t *mbr)
 	pdev->attr.partition.sector_cnt   = nb_sec;
 	pdev->attr.partition.sector_start = first_sec;
 
-	K_PRINTF(1, "%s: type %Xh, start %x, %u sectors\n",
+	K_PRINTF(1, "dev: %s: type %Xh, start %x, %u sectors\n",
 		 xname, type, first_sec, nb_sec);
       }
     }

@@ -14,4 +14,6 @@ typedef char         nlink_t;	   /* number of links to a file */
 typedef s32_t        zone_t;	   /* zone number */
 typedef s32_t        block_t;	   /* block number */
 
+typedef u16_t        dev_t;
+
 #endif // _sys_types_h_

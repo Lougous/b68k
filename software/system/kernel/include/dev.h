@@ -41,16 +41,16 @@ typedef union {
 
 struct dev {
   char name[8];
-  pid_t drv;
-  void *handle;
+  dev_t dev_id;
   dev_attr_t attr;
 };
 
 
 extern void dev_init (void);
-extern struct dev *dev_register_char (const char *name, pid_t drv, void *handle);
-extern u32_t dev_register_disk (const char *name, pid_t drv, void *handle, u8_t *mbr);
+extern int dev_register_char (const char *name, pid_t maj, u16_t min);
+extern int dev_register_disk (const char *name, pid_t maj, u16_t min, u8_t *mbr);
 extern struct dev *dev_get(const char *name);
-extern char *dev_name (u32_t id);
+extern struct dev *dev_get_by_id(dev_t dev);
+extern char *dev_name (u16_t id);
 
 #endif /* _dev_h_ */

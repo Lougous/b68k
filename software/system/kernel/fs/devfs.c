@@ -11,6 +11,8 @@
 #include <stddef.h>
 #include <syscall.h>
 #include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/sysmacros.h>
 #include <errno.h>
 
 #include <stdio.h>
@@ -38,7 +40,7 @@ extern char size_check_devfs[(signed)K_MAX_VFS_PRIVATE_LEN-(signed)sizeof(struct
 // private data for struct vnode (.v_data)
 struct devnode {
   int flags;
-  struct dev *pdev;
+  dev_t dev;
   off_t lseek;
 };
 
@@ -51,15 +53,15 @@ const struct vnodeops _devfs_vnodeops;
 ////////////////////////////////////////////////////////////////////////////////
 // vnode/rnode management
 ////////////////////////////////////////////////////////////////////////////////
-// find a vnode with matching pdev
-static struct vnode *_find_vnode(struct devfs *pdevfs, struct dev *pdev)
+// find a vnode with matching dev
+static struct vnode *_find_vnode(struct devfs *pdevfs, dev_t dev)
 {
   struct vnode *pvn = pdevfs->pvn;
 
   while (pvn) {
     struct devnode *pdn = (struct devnode *)&(pvn->v_data[0]);
 
-    if (pdn->pdev == pdev) {
+    if (pdn->dev == dev) {
       return pvn;
     }
 
@@ -70,7 +72,7 @@ static struct vnode *_find_vnode(struct devfs *pdevfs, struct dev *pdev)
   return 0;
 }
 
-static struct vnode *_allocate_vnode(struct vfs *pvfs, struct dev *pdev)
+static struct vnode *_allocate_vnode(struct vfs *pvfs, dev_t dev)
 {
   struct vnode *pvn = vfs_vnode_alloc();
 
@@ -87,7 +89,7 @@ static struct vnode *_allocate_vnode(struct vfs *pvfs, struct dev *pdev)
 
   struct devnode *pdn = (struct devnode *)&(pvn->v_data[0]);
 
-  pdn->pdev   = pdev;
+  pdn->dev    = dev;
   pdn->lseek  = 0;
   pdn->flags  = 0;
 
@@ -101,7 +103,7 @@ static struct vnode *_allocate_vnode(struct vfs *pvfs, struct dev *pdev)
 ////////////////////////////////////////////////////////////////////////////////
 // devfs operations
 ////////////////////////////////////////////////////////////////////////////////
-int devfs_mount (struct vfs *pvfs, struct dev *pdev)
+int devfs_mount (struct vfs *pvfs, dev_t dev)
 {
   K_PRINTF(2, "devfs: mounting\n");
   
@@ -128,7 +130,7 @@ int devfs_mount (struct vfs *pvfs, struct dev *pdev)
 
   pdn->flags = 0;  // TODO
   pdn->lseek = 0;
-  pdn->pdev  = 0;
+  pdn->dev   = 0;
 
   // add vnode in list
   struct devfs *pdevfs = (struct devfs *)&(pvfs->vfs_data[0]);
@@ -164,7 +166,7 @@ const struct vfsops _devfs_vfs_op = {
 static int _vn_open(struct vnode *pvn, int flags, pid_t pid)
 {
   struct devnode *pdn = (struct devnode *)&(pvn->v_data[0]);
-  struct dev *pdev = pdn->pdev;
+  dev_t dev = pdn->dev;
 
   if (pvn->v_type == VDIR) {
     pdn->lseek = 0;
@@ -174,10 +176,10 @@ static int _vn_open(struct vnode *pvn, int flags, pid_t pid)
   // pdev should be valid here if vnode properly returned by lookup
   message_t msg;
   msg.type = DEV_OPEN;
-  msg.body.dev_open.handle = pdev->handle;
+  msg.body.dev_open.minor = minor(dev);
   msg.body.dev_open.flags = flags;
  
-  sendreceive(pdev->drv, &msg, O_SEND | O_RECV);
+  sendreceive(major(dev), &msg, O_SEND | O_RECV);
 
   return msg.body.s32;
 }
@@ -189,14 +191,14 @@ static int _vn_close(struct vnode *pvn, pid_t pid)
   }
   
   struct devnode *pdn = (struct devnode *)&(pvn->v_data[0]);
-  struct dev *pdev = pdn->pdev;
+  dev_t dev = pdn->dev;
 
   // pdev should be valid here if vnode properly returned by lookup
   message_t msg;
   msg.type = DEV_CLOSE;  
-  msg.body.dev_close.handle = pdev->handle;
+  msg.body.dev_close.minor = minor(dev);
 
-  sendreceive(pdev->drv, &msg, O_SEND | O_RECV);
+  sendreceive(major(dev), &msg, O_SEND | O_RECV);
 
   return msg.body.u32;
 }
@@ -208,17 +210,17 @@ static size_t _vn_read (struct vnode *pvn, void *buf, size_t count, pid_t pid)
   }
   
   struct devnode *pdn = (struct devnode *)&(pvn->v_data[0]);
-  struct dev *pdev = pdn->pdev;
+  dev_t dev = pdn->dev;
   
   // pdev should be valid here if vnode properly returned by lookup
   message_t msg;
   msg.type = DEV_READ;
-  msg.body.dev_read.handle = pdev->handle;
+  msg.body.dev_read.minor = minor(dev);
   msg.body.dev_read.src_seek = pdn->lseek;
   msg.body.dev_read.dst = buf;
   msg.body.dev_read.count = count;
   
-  sendreceive(pdev->drv, &msg, O_SEND | O_RECV);
+  sendreceive(major(dev), &msg, O_SEND | O_RECV);
   
   pdn->lseek += msg.body.s32;
   
@@ -232,17 +234,17 @@ static size_t _vn_write (struct vnode *pvn, const void *buf, size_t count, pid_t
   }
   
   struct devnode *pdn = (struct devnode *)&(pvn->v_data[0]);
-  struct dev *pdev = pdn->pdev;
+  dev_t dev = pdn->dev;
 
   // pdev should be valid here if vnode properly returned by lookup
   message_t msg;
   msg.type = DEV_WRITE;
-  msg.body.dev_write.handle = pdev->handle;
+  msg.body.dev_write.minor = minor(dev);
   msg.body.dev_write.src = (void *)buf;
   msg.body.dev_write.dst_seek = pdn->lseek;
   msg.body.dev_write.count = count;
   
-  sendreceive(pdev->drv, &msg, O_SEND | O_RECV);
+  sendreceive(major(dev), &msg, O_SEND | O_RECV);
   
   pdn->lseek += msg.body.s32;
   
@@ -257,17 +259,17 @@ static int _vn_ioctl (struct vnode *pvn, int request, mem_va_t ptr, pid_t pid)
   }
   
   struct devnode *pdn = (struct devnode *)&(pvn->v_data[0]);
-  struct dev *pdev = pdn->pdev;
+  dev_t dev = pdn->dev;
 
   // pdev should be valid here if vnode properly returned by lookup
   message_t msg;
   msg.type = DEV_IOCTL;
-  msg.body.dev_ioctl.handle  = pdev->handle;
+  msg.body.dev_ioctl.minor   = minor(dev);
   msg.body.dev_ioctl.pid     = pid;  // TODO
   msg.body.dev_ioctl.request = request;
   msg.body.dev_ioctl.va_ptr  = (void *)ptr;
   
-  sendreceive(pdev->drv, &msg, O_SEND | O_RECV);
+  sendreceive(major(dev), &msg, O_SEND | O_RECV);
   
   return msg.body.s32;
 }
@@ -360,11 +362,11 @@ int _vn_lookup(struct vnode *pvn, char *nm, struct vnode **ppv, pid_t pid)
 
   // vnode already exists ? check vnode list
   struct devfs *pdevfs = (struct devfs *)&(pvfs->vfs_data[0]);
-  *ppv = _find_vnode(pdevfs, pdev);
+  *ppv = _find_vnode(pdevfs, pdev->dev_id);
 
   if (!*ppv) {
     // need to create new vnode
-    *ppv = _allocate_vnode(pvfs, pdev);
+    *ppv = _allocate_vnode(pvfs, pdev->dev_id);
 
     if (!*ppv) {
       // out of resource
@@ -380,7 +382,7 @@ int _vn_lookup(struct vnode *pvn, char *nm, struct vnode **ppv, pid_t pid)
 
   pdn->flags = 0;  // TODO
   pdn->lseek = 0;
-  pdn->pdev  = pdev;
+  pdn->dev   = pdev->dev_id;
 
   return 0;
 }
@@ -422,7 +424,7 @@ static int _vn_inactive (struct vnode *pvn)
 static int _vn_getattr (struct vnode *pvn, struct stat *pto)
 {
   struct devnode *pdn = (struct devnode *)&(pvn->v_data[0]);
-  pto->st_rdev = pdn->pdev;
+  pto->st_rdev = pdn->dev;
   return -1;
 }
 

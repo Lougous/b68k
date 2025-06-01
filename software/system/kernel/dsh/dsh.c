@@ -24,6 +24,8 @@
 #include <msg.h>
 
 #include "lock.h"
+#include "config.h"
+#include "debug.h"
 
 /* build-in commands */
 extern int ramtest (int argc, char *argv[]);
@@ -282,12 +284,14 @@ static int _dsh_getchar (void)
 void dsh (void)  {
   int pos = 0;
 
-  printf("starting debug monitor\n");
+  K_PRINTF(0, "dsh: starting debug monitor, press any key to activate\n");
   _dsh_pid = proc_current();
 
   // register interrupt handler for serial input
   irq_register_interrupt(IRQ_DBGSERIAL, _uart_interrupt);
   irq_enable_interrupt(IRQ_DBGSERIAL);
+
+  (void)_dsh_getchar();
   
   printf(PROMPT);
 

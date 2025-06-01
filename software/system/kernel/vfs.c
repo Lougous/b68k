@@ -16,6 +16,7 @@
 #include <syscall.h>
 #include <errno.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 
 #include <stdio.h>
 #include <string.h>
@@ -40,12 +41,12 @@ struct vfs *_vfs_used_vfs_list;
 // list of managed file systems
 struct fs_type {
   const char *name;
-  int16_t (* mount)(struct vfs *pvfs, struct dev *pdev);
+  int16_t (* mount)(struct vfs *pvfs, dev_t dev);
 };
 
-extern int16_t rfs_mount(struct vfs *pvfs, struct dev *pdev);
-extern int16_t devfs_mount(struct vfs *pvfs, struct dev *pdev);
-extern int16_t fat_mount(struct vfs *pvfs, struct dev *pdev);
+extern int16_t rfs_mount(struct vfs *pvfs, dev_t dev);
+extern int16_t devfs_mount(struct vfs *pvfs, dev_t dev);
+extern int16_t fat_mount(struct vfs *pvfs, dev_t dev);
 
 static const struct fs_type _vfs_fs_types[] = {
   { .name = "devfs", .mount = devfs_mount },
@@ -308,11 +309,12 @@ static void _vfs_mount (pid_t pid, message_t *msg)
   }
 
   // get device to mount
-  struct dev *pdev;
+  dev_t dev_id;
 
   if (proc_get_uid(pid) == PROC_UID_KERNEL) {
     // kernel specifies device name (root filesystem device cannot be specified as /dev/...)
-    pdev = dev_get(dev);
+    struct dev *pdev = dev_get(dev);
+    dev_id = pdev->dev_id;
   } else {
     // user specifies special file path (block device)
     // get vnode for device
@@ -335,10 +337,10 @@ static void _vfs_mount (pid_t pid, message_t *msg)
     struct stat stats;
     pvn_dev->v_op->vn_getattr(pvn_dev, &stats);
 
-    pdev = stats.st_rdev;
+    dev_id = stats.st_rdev;
   }
 
-  int16_t (* pmount)(struct vfs *pvfs, struct dev *pdev) = 0;
+  int16_t (* pmount)(struct vfs *pvfs, dev_t dev) = 0;
 
   if (type) {
     int16_t ft;
@@ -350,6 +352,8 @@ static void _vfs_mount (pid_t pid, message_t *msg)
     }
   }
 
+  K_PRINTF(MOUNT_DEBUG, "vfs: PID-%d: vfs_mount: device is %Xh\n", pid, dev_id);
+
   // unknown type of FS
   if (! pmount) {
     K_PRINTF(MOUNT_DEBUG, "vfs: PID-%d: vfs_mount: ENODEV\n", pid);
@@ -358,7 +362,7 @@ static void _vfs_mount (pid_t pid, message_t *msg)
   }
 
   // mount FS
-  if (pmount(pvfs, pdev)) {
+  if (pmount(pvfs, dev_id)) {
     K_PRINTF(MOUNT_DEBUG, "vfs: PID-%d: vfs_mount: EINVAL (VFS mount)\n", pid);
     resp.body.u32 = -EINVAL;   // invalid FS
     goto _vfs_mount_exit;

@@ -13,6 +13,7 @@
 #include <types.h>
 #include <syscall.h>
 #include <errno.h>
+#include <sys/types.h>
 
 #include "irq.h"
 #include "b68k.h"

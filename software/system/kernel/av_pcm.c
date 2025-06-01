@@ -8,6 +8,7 @@
 #include <stddef.h>
 #include <types.h>
 #include <syscall.h>
+#include <sys/types.h>
 
 #include "b68k.h"
 

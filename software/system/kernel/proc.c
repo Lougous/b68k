@@ -42,6 +42,8 @@ struct proc_desc_t {
 
   // MFP registers
   u8_t mfp_ad;   // 78
+
+  // !!! end of data used by srt0.s !!!
   
   // process state
   proc_state_t state;
@@ -63,6 +65,7 @@ struct proc_desc_t {
   // memory
   mem_pa_t mem_ad;
   u32_t    mem_sz;
+  u32_t    stackb;  // bottom of stack (for tasks only)
 };
 
 struct proc_list_t {
@@ -249,6 +252,11 @@ pid_t proc_create_task (pid_t p, char *name, void *pc, void *stk, u32_t stk_sz)
   proc->d.state    = PROC_STATE_READY;
   proc->d.mem_ad   = 0;
   proc->d.mem_sz   = 0xffffff;
+  proc->d.stackb   = (u32_t)stk;
+
+  // canary space: write last word of stack with known data so what stack
+  // overflow could be detected at some point
+  *((u32_t *)stk) = 0xDEADBEEF;
 
   //  K_PRINTF(3, "task %s created (%i)\n", name, proc->pid);
 
@@ -760,6 +768,10 @@ void proc_display_info(pid_t pid)
     printf(" instruction %04Xh\n", _proc_table[pid].d.x_instr);
     printf("virtual memory\n");
     printf(" PA: %Xh, size %u bytes\n", _proc_table[pid].d.mem_ad, _proc_table[pid].d.mem_sz);
+    if (_proc_table[pid].d.uid == PROC_UID_KERNEL) {
+      printf("stack\n");
+      printf(" base %04Xh (%Xh)\n", _proc_table[pid].d.stackb, *((u32_t *)_proc_table[pid].d.stackb));
+    }
     printf("signals\n");
     printf(" %s%s\n",
 	   _proc_table[pid].d.sig_mask & SIGCHILD ? "SIGCHILD " : "",

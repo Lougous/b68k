@@ -11,6 +11,7 @@
 #include <string.h>
 #include <syscall.h>
 #include <errno.h>
+#include <sys/types.h>
 
 #include "config.h"
 #include "mem.h"
@@ -81,7 +82,7 @@ static int _tty_putchar(int c)
     static message_t msg_out;
 
     msg_out.type                  = DEV_WRITE;
-    msg_out.body.dev_write.handle = NULL;  // to TTY0
+    msg_out.body.dev_write.minor  = 0;  // to TTY0
     msg_out.body.dev_write.count  = _tp_len;
     msg_out.body.dev_write.src    = _tp_buf;
 

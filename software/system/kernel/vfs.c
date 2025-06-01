@@ -796,11 +796,15 @@ static void _vfs_mkdir (pid_t pid, message_t *msg)
   mkdir_msg_body_t *msg_mkdir = &msg->body.mkdir;
   int16_t len = msg_mkdir->len;
 
-  K_PRINTF(3, "vfs: PID-%i MKDIR: %Xh\n", pid, (mem_va_t)msg_mkdir->path);
-
   if (! len) {
     K_PRINTF(3, "vfs: PID-%i MKDIR: ENOENT\n", pid);
     resp.body.s32 = -ENOENT;
+    goto _vfs_mkdir_exit;
+  }
+  
+  if (len > K_MAX_DIRNAME_LEN) {
+    K_PRINTF(3, "vfs: PID-%i MKDIR: ENAMETOOLONG\n", pid);
+    resp.body.s32 = -ENAMETOOLONG;
     goto _vfs_mkdir_exit;
   }
   
@@ -812,10 +816,19 @@ static void _vfs_mkdir (pid_t pid, message_t *msg)
     goto _vfs_mkdir_exit;
   }
 
-  int16_t ptr = len;
+  // build dirname
+  char path[K_MAX_DIRNAME_LEN+1];
+  strncpy(path, pa_path, len);
+  path[len] = 0;
   
+  K_PRINTF(3, "vfs: PID-%i MKDIR: %s\n", pid, path);
+
   // remove tailing /s
-  while (ptr && (pa_path[ptr-1] == '/')) ptr--;
+  int16_t ptr = len-1;
+  
+  while (ptr && (path[ptr] == '/')) {
+    path[ptr--] = 0;
+  }
 
   if (! ptr) {
     // only /s in name
@@ -823,29 +836,26 @@ static void _vfs_mkdir (pid_t pid, message_t *msg)
     resp.body.s32 = -ENOENT;
     goto _vfs_mkdir_exit;
   }
-    
-  // split full path in path + name to create
-  ptr = len - 1;
-  
-  while (ptr && (pa_path[ptr] != '/')) ptr--;
 
-  char *basename = pa_path + ptr;
+  len = ptr+1;
   
-  if (pa_path[ptr] == '/') {
-    basename++;
+  // remove basename
+  while (ptr && (path[ptr] != '/')) {
+    ptr--;
   }
 
-  K_PRINTF(3, "vfs: PID-%I MKDIR: basename = %s\n", pid, basename);
+  if (ptr) {
+    path[ptr] = 0;
+  } else {
+    // ptr to first character
+    path[0] = '/';
+    path[1] = 0;
+  }
 
+  // dirname built
+  K_PRINTF(3, "vfs: PID-%i MKDIR: dirname = %s\n", pid, path);
   struct vnode *pvn;
-
-  // not very clean to alterate user's memory space but avoids a copy
-  char bak = pa_path[len];
-  pa_path[len] = 0;
-
-  resp.body.s32 = _lookuppn(pa_path, &pvn, pid);
-
-  pa_path[len] = bak;
+  resp.body.s32 = _lookuppn(path, &pvn, pid);
 
   if (resp.body.s32) {
     K_PRINTF(3, "vfs: PID-%i MKDIR: %i\n", pid, resp.body.s32);
@@ -858,8 +868,27 @@ static void _vfs_mkdir (pid_t pid, message_t *msg)
     resp.body.s32 = -ENOTDIR;
     goto _vfs_mkdir_exit;
   }
-   
-  resp.body.s32 = pvn->v_op->vn_mkdir(pvn, basename, pid);
+
+  // basename
+  strncpy(path, pa_path, len);
+  path[len] = 0;
+
+  K_PRINTF(3, "vfs: PID-%i MKDIR: full = %s\n", pid, path);
+  
+  // note: tailing /s already stripped with current len value
+  // find last /
+  ptr = len - 1;
+  
+  while (ptr && (path[ptr] != '/')) {
+    ptr--;
+  }
+
+  if (path[ptr] == '/') {
+    ptr++;
+  }
+  
+  K_PRINTF(3, "vfs: PID-%i MKDIR: basename = %s\n", pid, path + ptr);
+  resp.body.s32 = pvn->v_op->vn_mkdir(pvn, path + ptr, pid);
 
   VN_RELE(pvn);
 
@@ -869,7 +898,7 @@ static void _vfs_mkdir (pid_t pid, message_t *msg)
   }
 
   // success
-  K_PRINTF(3, "vfs: PID-%i MKDIR: %s\n", pid, basename);
+  K_PRINTF(3, "vfs: PID-%i MKDIR: success\n", pid);
   
  _vfs_mkdir_exit:
   send(pid, &resp);

@@ -419,7 +419,7 @@ void system_task (void)
   }
 
   // create /dev directory to able mounting  devfs
-#if 0
+#if 1
   msg.type = MKDIR;
   msg.body.mkdir.path = "/dev";
   msg.body.mkdir.len  = 4;
@@ -427,7 +427,7 @@ void system_task (void)
 
   sendreceive(vfs_pid, &msg, O_SEND | O_RECV);
 
-  if (msg.body.u32 != 0) {
+  if (msg.body.s32 != 0 && msg.body.s32 != -EEXIST) {
     _system_message("failed to create /dev, system startup aborted\n");
     goto abort;
   }

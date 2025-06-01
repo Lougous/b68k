@@ -14,6 +14,7 @@
 #include <termios.h>
 #include <dirent.h>
 #include <sys/stat.h>
+#include <errno.h>
 
 typedef uint32_t u32_t;
 typedef uint8_t u8_t;
@@ -445,9 +446,49 @@ void do_cmd (unsigned char *cmd)
       _send_msg(aread, RFS_PAYLOAD_LEN(sizeof(rfs_aread_ko_t))+len);
     }
     break;
+
+  case 'M':
+    // mkdir
+    {
+      u8_t amkdir[RFS_PAYLOAD_LEN(sizeof(rfs_amkdir_t))];
+      amkdir[0] = 'm';
+      amkdir[1] = -1;
+
+       rnode_t rnode = rfs_read_u32le(cmd+1);
+      u8_t flags = cmd[5];
+      u8_t pid = cmd[6];
+      char *name = (char *)cmd+7;
+
+      if (DEBUG > 1) printf("C: mkdir node %Xh: %s (flags=%u, PID=%u)\n", rnode, name, flags, pid);
+
+      // find descriptor for this node
+      struct desc *pdesc = _find_by_node(rnode);
+      
+      if (! pdesc) {
+	printf("E: invalid node %Xh (mkdir)\n", rnode);
+	_send_msg(amkdir, sizeof(amkdir));
+	break;
+      }
+
+      char fullname[128];
+      snprintf(fullname, sizeof(fullname), "%s/%s", pdesc->pathname, name);
+      if (DEBUG > 1) printf("C: mkdir full path %s\n", fullname);
+      
+      int ret = mkdir(fullname, 0 /* mode_t mode */);
+
+      if (ret < 0) {
+	printf("W: mkdir failed (errno=%i)\n", errno);
+	ret = errno;
+      }
+
+      amkdir[1] = ret;
+     _send_msg(amkdir, sizeof(amkdir));
+      
+    }
+    break;
     
   default:
-    printf("E: unsupported command ('%c')\n", cmd[2]);
+    printf("E: unsupported command ('%c')\n", cmd[0]);
     break;
   }
 

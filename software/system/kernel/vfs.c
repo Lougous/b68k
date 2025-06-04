@@ -245,18 +245,21 @@ int _lookuppn (char *nm, struct vnode **ppv, pid_t pid)
 
     // split first path element
     u16_t elen = _subpathlen(nm);
-    char cbak = nm[elen];
-    nm[elen] = 0;
     
     K_PRINTF(3, "vfs:   path elem: %s (%u)\n", nm, elen);
-    ret = pvn->v_op->vn_lookup(pvn, nm, ppv, pid);
-    VN_RELE(pvn);
-    pvn = *ppv;
 
-    nm[elen] = cbak;
+    if ((elen > 1) || (nm[0] != '.')) {
+      char cbak = nm[elen];
+      nm[elen] = 0;
+      ret = pvn->v_op->vn_lookup(pvn, nm, ppv, pid);
+      VN_RELE(pvn);
+      pvn = *ppv;
+      
+      nm[elen] = cbak;
+      
+      if (ret) return ret;
+    }
     
-    if (ret) return ret;
-
     // next in name tree
     nm += elen;
     nm = _trim_slash(nm);

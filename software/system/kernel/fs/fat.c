@@ -805,12 +805,12 @@ static int _fnode_getdents (struct vnode *pvn, char *buf, unsigned int count, pi
     }
 
 
-    K_PRINTF(3, "fat_getdents: entry %X (%X %X) \n", (u32_t)dentry, dentry[0], dentry[11]);
+    K_PRINTF(3, "fat: getdents: entry %X (%X %X) \n", (u32_t)dentry, dentry[0], dentry[11]);
 
     if (
-	(dentry[0] != _FAT_FREE_ENTRY_TAG) &&
-	(dentry[11] != _FAT_DIRENT_ATTR_LFN) &&
-	(dentry[11] != _FAT_DIRENT_ATTR_VOLUME_LABEL)) {
+	(dentry[0] != (char)_FAT_FREE_ENTRY_TAG) &&
+	(dentry[11] != (char)_FAT_DIRENT_ATTR_LFN) &&
+	(dentry[11] != (char)_FAT_DIRENT_ATTR_VOLUME_LABEL)) {
       // ignore free locations, long file names and volume labels
       if (dentry[0] == 0) {
 	// end of catalogue
@@ -826,6 +826,7 @@ static int _fnode_getdents (struct vnode *pvn, char *buf, unsigned int count, pi
       }
 
       _to_string_name(&dirp->d_name[0], dentry);
+      K_PRINTF(3, "fat: getdents: %s\n", &dirp->d_name[0]);
 
       dirp->d_size = _FAT_DIRENT_SIZE;  // TODO
     

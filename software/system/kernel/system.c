@@ -418,23 +418,10 @@ void system_task (void)
     goto abort;
   }
 
-  // create /dev directory to able mounting  devfs
-#if 1
-  msg.type = MKDIR;
-  msg.body.mkdir.path = "/dev";
-  msg.body.mkdir.len  = 4;
-  msg.body.mkdir.flags = 0;
-
-  sendreceive(vfs_pid, &msg, O_SEND | O_RECV);
-
-  if (msg.body.s32 != 0 && msg.body.s32 != -EEXIST) {
-    _system_message("failed to create /dev, system startup aborted\n");
-    goto abort;
-  }
-#endif
-    
+  //////////////////////////////////////////////////////////////////////////////
   // mount devfs
-  K_PRINTF(1, "/dev: devfs\n");
+  //////////////////////////////////////////////////////////////////////////////
+  K_PRINTF(0, "/dev: devfs\n");
     
   msg.type = MOUNT;
   msg.body.mount.dev = "devfs";
@@ -448,7 +435,9 @@ void system_task (void)
     goto abort;
   }
 
+  //////////////////////////////////////////////////////////////////////////////
   // create, load & start init process
+  //////////////////////////////////////////////////////////////////////////////
   pid_t init_pid = proc_create_init("init", 0);
 
   struct argenv {
@@ -477,7 +466,9 @@ void system_task (void)
  abort:
   _POST_code(0xF);
 
-  /* main loop */
+  //////////////////////////////////////////////////////////////////////////////
+  // main loop
+  //////////////////////////////////////////////////////////////////////////////
   while(1) {
     static message_t msg_out;
     msg_out.type = 0;

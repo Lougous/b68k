@@ -208,6 +208,11 @@ int fat_mount (struct vfs *pvfs, dev_t dev)
 
   struct dev *pdev = dev_get_by_id(dev);
 
+  if ((pdev == NULL) || (pdev->attr.attr_type != DEV_ATTR_DISK_PARTITION)) {
+    K_PRINTF(3, "fat: device %Xh: ENOTBLK\n", dev);
+    return -ENOTBLK;
+  }  
+
   // read partition boot record
   msg.type = DEV_READ;
   msg.body.dev_read.minor = minor(dev);
@@ -217,9 +222,12 @@ int fat_mount (struct vfs *pvfs, dev_t dev)
   
   sendreceive(major(dev), &msg, O_SEND | O_RECV);
   
-  if (msg.body.s32 != 512) return -4;
+  if (msg.body.s32 != 512) {
+    return -EINVAL;
+  }
   
   K_PRINTF(3, "fat: partition label   : ");
+  
   if (K_DEBUG_LEVEL >= 3) {
     for (i = 0x2B; i < 0x2b+11; i++) putchar(_buf[i]);
     putchar('\n');
@@ -242,7 +250,7 @@ int fat_mount (struct vfs *pvfs, dev_t dev)
 
   if (pfat->BytesPerSector != 512) {
     K_PRINTF(3, "fat: unexpecting sector size (%u, expected 512)\n", pfat->BytesPerSector);
-    return -1;
+    return -EINVAL;
   }
   
   K_PRINTF(3, "fat: BytesPerSector    : %u\n", pfat->BytesPerSector);

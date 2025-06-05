@@ -118,6 +118,7 @@ int devfs_mount (struct vfs *pvfs, dev_t dev)
   struct vnode *pvn = vfs_vnode_alloc();
 
   if (!pvn) {
+    K_PRINTF(2, "devfs: ENOMEM\n");
     return -ENOMEM;
   }
 

@@ -312,19 +312,16 @@ static void _vfs_mount (pid_t pid, message_t *msg)
   }
 
   // get device to mount
-  dev_t dev_id;
+  dev_t dev_id = 0;
 
   if (proc_get_uid(pid) == PROC_UID_KERNEL) {
     // kernel specifies device name (root filesystem device cannot be specified as /dev/...)
     struct dev *pdev = dev_get(dev);
 
-    if (! pdev) {
-      K_PRINTF(MOUNT_DEBUG, "vfs: PID-%d: vfs_mount: device ENOTBLK\n", pid);
-      resp.body.u32 = -ENOTBLK;
-      goto _vfs_mount_exit;
+    // no device may be valid for specific FS like devfs
+    if (pdev) {
+      dev_id = pdev->dev_id;
     }
-
-    dev_id = pdev->dev_id;
   } else {
     // user specifies special file path (block device)
     // get vnode for device

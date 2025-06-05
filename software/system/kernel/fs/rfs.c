@@ -182,8 +182,15 @@ int rfs_mount (struct vfs *pvfs, dev_t dev)
 {
   message_t msg;
 
-  K_PRINTF(2, "rfs: probing connection ...\n");
-  
+  K_PRINTF(3, "rfs: probing connection ...\n");
+
+  struct dev *pdev = dev_get_by_id(dev);
+
+  if ((dev == NULL) || (pdev->attr.attr_type != DEV_ATTR_CHAR)) {
+    K_PRINTF(3, "rfs: device %Xh: ENOTBLK\n", dev);
+    return -ENOTBLK;
+  }  
+ 
   // open device
   msg.type = DEV_OPEN;
   msg.body.dev_open.minor = minor(dev);

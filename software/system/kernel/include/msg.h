@@ -21,5 +21,6 @@ extern int sendreceive_vfs_close(message_t *msg, int fd);
 extern ssize_t sendreceive_vfs_read(message_t *msg, int fd, void *buf, size_t count);
 extern int sendreceive_vfs_getdents (message_t *msg, unsigned int fd, struct dirent *dirp, unsigned int count);
 extern off_t sendreceive_vfs_lseek (message_t *msg, int fildes, off_t offset, int whence);
+extern void sendreceive_vfs_sysdir (message_t *msg, pid_t pid);
 
 #endif /* _msg_h_ */

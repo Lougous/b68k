@@ -13,18 +13,19 @@
 ////////////////////////////////////////////////////////////////////////////////
 // VFS messages
 ////////////////////////////////////////////////////////////////////////////////
-#define MOUNT     0x0101
-#define OPEN      0x0102
-#define GETDENTS  0x0103
-#define CLOSE     0x0104
-#define READ      0x0105
-#define WRITE     0x0106
-#define LSEEK     0x0107
-#define VFS_FORK  0x0108  // reserved to kernel
-#define CHDIR     0x0109
-#define IOCTL     0x0110
-#define MKDIR     0x0112
-#define VFS_KILL  0x0113  // reserved to kernel
+#define MOUNT       0x0101
+#define OPEN        0x0102
+#define GETDENTS    0x0103
+#define CLOSE       0x0104
+#define READ        0x0105
+#define WRITE       0x0106
+#define LSEEK       0x0107
+#define VFS_FORK    0x0108  // reserved to kernel
+#define CHDIR       0x0109
+#define IOCTL       0x0110
+#define MKDIR       0x0112
+#define VFS_KILL    0x0113  // reserved to kernel
+#define VFS_SYSDIR  0x0114  // reserved to kernel
 
 typedef struct {
   char *dev;
@@ -89,6 +90,7 @@ typedef struct {
 } mkdir_msg_body_t;
 
 // vfs_kill: uses u32 body
+// vfs_setdir: uses u32 body
 
 ////////////////////////////////////////////////////////////////////////////////
 // devices messages

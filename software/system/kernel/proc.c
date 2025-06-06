@@ -478,8 +478,17 @@ int proc_exec(pid_t pid, mem_pa_t argenvp, u16_t argenvlen, u16_t envoff)
   
   u32_t argv0_offset = *((u32_t *)argenvp);
   char *argv0 = ((char *)argenvp) + argv0_offset;
-  
+
+  // set system task current directory as the same as process that exec because
+  // the executable path is defined based on call process context, not system
+  // task context, but the system task will open the file	  
+  sendreceive_vfs_sysdir(&msg, pid);
+
+  // open executable file
   int fd = sendreceive_vfs_open(&msg, argv0, O_RDONLY);
+
+  // release system task current directory
+  sendreceive_vfs_sysdir(&msg, PROC_PID_SYSTEM_TASK);
 
   if (fd < 0) {
     K_PRINTF(2, "EXEC: %s: cannot open file\n", argv0);

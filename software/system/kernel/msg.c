@@ -99,3 +99,14 @@ int sendreceive_vfs_getdents (message_t *msg, unsigned int fd, struct dirent *di
   return msg->body.s32;
 }
 
+void sendreceive_vfs_sysdir (message_t *msg, pid_t pid)
+{
+  msg->type = VFS_SYSDIR;
+  msg->body.u32 = pid;
+
+  pid_t vfs_pid = proc_get_pid("vfs");
+
+  sendreceive(vfs_pid, msg, O_SEND | O_RECV);
+
+  return;
+}  

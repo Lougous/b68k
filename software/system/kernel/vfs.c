@@ -87,22 +87,24 @@ static void _vfs_chdir (pid_t from, message_t *msg);
 static void _vfs_ioctl (pid_t from, message_t *msg);
 static void _vfs_mkdir (pid_t from, message_t *msg);
 static void _vfs_kill (pid_t from, message_t *msg);
+static void _vfs_sysdir (pid_t from, message_t *msg);
 
 #define MASK 0x1f
 
 const message_handler_pfc_t _vfs_handlers[MASK+1] = {
-  [MASK & MOUNT]    = (message_handler_pfc_t)_vfs_mount,
-  [MASK & OPEN]     = (message_handler_pfc_t)_vfs_open,
-  [MASK & GETDENTS] = (message_handler_pfc_t)_vfs_getdents,
-  [MASK & CLOSE]    = (message_handler_pfc_t)_vfs_close,
-  [MASK & READ]     = (message_handler_pfc_t)_vfs_read,
-  [MASK & WRITE]    = (message_handler_pfc_t)_vfs_write,
-  [MASK & LSEEK]    = (message_handler_pfc_t)_vfs_lseek,
-  [MASK & VFS_FORK] = (message_handler_pfc_t)_vfs_fork,
-  [MASK & CHDIR]    = (message_handler_pfc_t)_vfs_chdir,
-  [MASK & IOCTL]    = (message_handler_pfc_t)_vfs_ioctl,
-  [MASK & MKDIR]    = (message_handler_pfc_t)_vfs_mkdir,
-  [MASK & VFS_KILL] = (message_handler_pfc_t)_vfs_kill
+  [MASK & MOUNT]      = (message_handler_pfc_t)_vfs_mount,
+  [MASK & OPEN]       = (message_handler_pfc_t)_vfs_open,
+  [MASK & GETDENTS]   = (message_handler_pfc_t)_vfs_getdents,
+  [MASK & CLOSE]      = (message_handler_pfc_t)_vfs_close,
+  [MASK & READ]       = (message_handler_pfc_t)_vfs_read,
+  [MASK & WRITE]      = (message_handler_pfc_t)_vfs_write,
+  [MASK & LSEEK]      = (message_handler_pfc_t)_vfs_lseek,
+  [MASK & VFS_FORK]   = (message_handler_pfc_t)_vfs_fork,
+  [MASK & CHDIR]      = (message_handler_pfc_t)_vfs_chdir,
+  [MASK & IOCTL]      = (message_handler_pfc_t)_vfs_ioctl,
+  [MASK & MKDIR]      = (message_handler_pfc_t)_vfs_mkdir,
+  [MASK & VFS_KILL]   = (message_handler_pfc_t)_vfs_kill,
+  [MASK & VFS_SYSDIR] = (message_handler_pfc_t)_vfs_sysdir
 };
 
 
@@ -621,7 +623,7 @@ static void _vfs_kill (pid_t pid, message_t *msg)
   K_PRINTF(3, "vfs: PID-%i KILL PID %i\n", pid, msg->body.u32);
 
   // allowed for kernel tasks only: actual user kill syscall is to send through system task
-  if (proc_get_uid(pid) == PROC_UID_KERNEL) {
+  if (pid == PROC_PID_SYSTEM_TASK) {
     pid_t pid = msg->body.u32;
     int fd;
     
@@ -965,4 +967,28 @@ void vfs_vnode_free(struct vnode *pvn)
 {
   pvn->next = _vfs_free_vnode_list;
   _vfs_free_vnode_list = pvn;
+}
+
+static void _vfs_sysdir (pid_t from, message_t *msg)
+{
+  message_t resp = { .body.u32 = 0 };  // OK
+
+  if (from == PROC_PID_SYSTEM_TASK) {
+    pid_t pid = msg->body.u32;
+
+    if (pid != PROC_PID_SYSTEM_TASK) {
+      // set system task current directory
+      _vfs_proc_table[0].cdir = _vfs_proc_table[pid].cdir;
+
+      if (_vfs_proc_table[0].cdir) {
+	VN_HOLD(_vfs_proc_table[0].cdir);
+      }
+    } else if (_vfs_proc_table[0].cdir) {
+      // release current directory
+      VN_RELE(_vfs_proc_table[0].cdir);
+      _vfs_proc_table[0].cdir = 0;
+    }
+  }
+
+  send(from, &resp);
 }

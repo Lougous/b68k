@@ -123,7 +123,7 @@ u32_t _k_exec_buf[(K_PROC_ARGS_SIZE+3) / 4];  // TODO: ARG_MAX in limits.h
 // root file system boot list (ordered)
 const char * const _root_boot_list[] = {
   // device, file system (0=auto, for disk partitions only)
-  "serial", "rfs",
+  //  "serial", "rfs",
   "sda0",   "fat",
   "sdb0",   "fat",
   0
@@ -386,7 +386,7 @@ void system_task (void)
   //////////////////////////////////////////////////////////////////////////////
   u8_t root_mounted = 0;
 
-  K_PRINTF(2, "mounting root file sytem\n");
+  K_PRINTF(2, "mounting root file system\n");
 
   char **p_boot_list = (char **)_root_boot_list;
 
@@ -571,7 +571,7 @@ void system_task (void)
 	    send(from, &msg_out);
 	    break;
 	  }
-	  	  
+
 	  // load executable
 	  sts = proc_exec(from, (mem_pa_t)_k_exec_buf, len, envoff);
 	  

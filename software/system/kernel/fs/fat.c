@@ -363,6 +363,8 @@ static int _fnode_lookup_root(struct vnode *pvn, char *nm, struct vnode **ppv, p
   u32_t seek = pfat->RootStartSector*512;
   message_t msg;
  
+  K_PRINTF(3, "fat: root lookup '%s'\n", nm);
+
   for (dent = 0; dent < pfat->MaxRootEntries; dent++)
   {
     u16_t entry = dent & 0xf;
@@ -411,6 +413,7 @@ static int _fnode_lookup_root(struct vnode *pvn, char *nm, struct vnode **ppv, p
 
 	if (!*ppv) {
 	  // out of resource
+	  K_PRINTF(3, "fat: root lookup ENOMEM\n", nm);
 	  return -ENOMEM;
 	}
 
@@ -460,7 +463,7 @@ static int _fnode_lookup(struct vnode *pvn, char *nm, struct vnode **ppv, pid_t 
   char name83[11];
   message_t msg;
 
-  for (cluster = pfn->CurrentCluster; ; cluster = _fat_next_cluster(pvn, cluster))
+  for (cluster = pfn->FirstCluster; ; cluster = _fat_next_cluster(pvn, cluster))
   {
     u32_t ssec;
     u32_t sector = pfat->DataStartSector + (cluster - 2) * pfat->SectorsPerCluster;

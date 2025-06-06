@@ -436,11 +436,11 @@ static int _fnode_lookup_root(struct vnode *pvn, char *nm, struct vnode **ppv, p
 
     if (pfn->buf[32*entry] == 0) {
       // end of directory catalogue
-      return 0;
+      return -1;
     }
   }
   
-  return 0;
+  return -1;
 }
 
 

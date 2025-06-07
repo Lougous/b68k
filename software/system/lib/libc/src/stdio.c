@@ -568,6 +568,9 @@ int vsprintf(char *str, const char *format, va_list aps)
 
   }
 
+  // terminating null byte
+  *str = '\0';
+
   va_end(ap);
 
   return 0;

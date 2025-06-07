@@ -32,6 +32,9 @@ int main (int argc, char *argv[])
   if (stdout->fd < 0) return -1;
   if (stderr->fd < 0) return -1;
 
+  // setup default environment
+  setenv("PATH", "/bin", 0);
+
   while (1) {
     printf("\nstarting shell ...\n");
 
@@ -44,7 +47,7 @@ int main (int argc, char *argv[])
       // start shell user process
       char *args[] = { "/bin/sh", (char*)0 };
 
-      execve(args[0], args, (char**)0);
+      execve(args[0], args, environ);
 
       // only when exec fails
       printf("init: child: failed to exec\n");

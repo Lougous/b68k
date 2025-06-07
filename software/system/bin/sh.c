@@ -19,6 +19,7 @@
 
 #define BUFLEN    128
 #define MAX_ARGS  8
+#define MAX_PATH  8
 
 char line[BUFLEN];
 char *c_args[MAX_ARGS];
@@ -26,19 +27,21 @@ char *c_args[MAX_ARGS];
 //char cpath[PATH_MAX+1];  // current path
 //char opath[PATH_MAX+1];  // old path
 
-static void _cut_words (char *cline)
+// extract words form a string and put them in a table
+// input string is alterated, and words point within the string
+static short _cut_words (char *cline, char *words[], short max)
 {
-  int argc = 0;
+  short argc = 0;
   int in = 0;
   in = 0;
 
-  c_args[0] = 0;
+  words[0] = 0;
 
   while (*cline) {
     if (in == 0 && *cline != ' ') {
       // start of word
       in = 1;
-      c_args[argc++] = cline;
+      words[argc++] = cline;
 
     } else if (in == 1 && *cline == ' ') {
       // end of word
@@ -46,7 +49,7 @@ static void _cut_words (char *cline)
       in = 0;
 
       // wont'be able to cut more
-      if (argc == (MAX_ARGS - 1)) {
+      if (argc == (max - 1)) {
 	break;
       }
     }
@@ -54,7 +57,9 @@ static void _cut_words (char *cline)
     cline++;
   }
 
-  c_args[argc] = 0;   
+  words[argc] = 0;
+
+  return argc;
 }
 
 static char *_trim_slash(char *str)
@@ -167,6 +172,145 @@ static short _build_path(char *dst, char *path)
   return 0;
 }
 
+static short _command_valid (char *path)
+{
+  int fd = open(path, O_RDONLY);
+
+  if (fd < 0) {
+    return 0;
+  }
+
+  // found
+  // TODO : check executable
+  close(fd);
+
+  return 1;
+}
+
+short _search_command (char **pcmd)
+{
+  // first check if command has path elements
+  char *pathelem = *pcmd;
+
+  while (*pathelem && (*pathelem != '/')) {
+    pathelem++;
+  }
+
+  if (*pathelem == '/') {
+    // it has path elements
+    return _command_valid(*pcmd);
+  }
+  
+  // explore PATH possibilities
+  pathelem = getenv("PATH");
+  static char fullpath[PATH_MAX];
+
+  if (pathelem) {
+    while (*pathelem) {
+      // search for end of PATH element
+      char *end = pathelem;
+
+      while (*end && (*end != ':')) {
+	end++;
+      }
+
+      char eol_save = *end;
+      *end = 0;
+
+      // TODO: possible buffer overfow ?
+      sprintf(fullpath, "%s/%s", pathelem, *pcmd);
+      
+      *end = eol_save;
+
+      if (_command_valid(fullpath)) {
+	*pcmd = fullpath;
+	return 1;
+      }
+
+      // next path element
+      pathelem = end;
+    }
+  }
+
+  // not found in path
+  return 0;
+}
+  
+short _do_words (void) {
+  // built-in commands
+  if (strcmp(c_args[0], "exit") == 0) return -1;
+
+  if (strcmp(c_args[0], "cd") == 0) {
+    char path[PATH_MAX+1];
+
+    if (c_args[1] && (c_args[1][0] == '-') && (c_args[1][1] == 0)) {
+      // cd -
+      char *opath = getenv("OLDPWD");
+
+      if (! opath) {
+	printf("sh: cd: OLDPWD not set\n");
+	return 0;
+      }
+	  
+      if (chdir(opath) < 0) {
+	printf("sh: cd: %s: No such directory\n", opath);
+	return 0;
+      }
+
+      strcpy(path, getenv("PWD"));
+      setenv("PWD", opath, 1);
+      setenv("OLDPWD", path, 1);
+    } else {
+      if (_build_path(path, c_args[1]) < 0) {
+	printf("sh: cd: %s: Path too long\n", c_args[1]);
+	return 0;
+      }
+	
+      if (chdir(path) < 0) {
+	printf("sh: cd: %s: No such directory\n", path);
+	return 0;
+      }
+
+      setenv("OLDPWD", getenv("PWD"), 1);
+      setenv("PWD", path, 1);
+    }
+
+    return 0;
+  }
+  else if (strcmp(c_args[0], "pwd") == 0) {
+    printf("%s\n", getenv("PWD"));  // TODO use $PWD
+    return 0;
+  }
+	
+  // external commands
+  if (_search_command(c_args) == 0) {
+    printf("Command '%s' not found\n", c_args[0]);
+    return 0;
+  }
+    
+  // file exists, create new process
+  int pid = fork();
+    
+  if (pid < 0) {
+    printf("cannot fork\n");
+  } else if (pid == 0) {
+    // child
+    execve(c_args[0], c_args, environ);
+
+    // only when exec fails
+    printf("cannot exec\n");
+    exit(0);
+  } else {
+    // parent
+    wait(NULL);
+
+    // TODO: process exit condition to look at
+    kill(pid, 1);
+  }
+
+  return 0;
+}  
+
 int main (int argc, char *argv[])
 {
   setenv("PWD", "/", 1);
@@ -208,84 +352,12 @@ int main (int argc, char *argv[])
     }
 
     // break down command & arguments
-    _cut_words(line);
+    (void)_cut_words(line, c_args, MAX_ARGS);
 
     if (c_args[0]) {
-      // internal commands
-      if (strcmp(c_args[0], "exit") == 0) break;
-
-      if (strcmp(c_args[0], "cd") == 0) {
-	char path[PATH_MAX+1];
-
-	if (c_args[1] && (c_args[1][0] == '-') && (c_args[1][1] == 0)) {
-	  // cd -
-	  char *opath = getenv("OLDPWD");
-
-	  if (! opath) {
-	    printf("sh: cd: OLDPWD not set\n");
-	    continue;
-	  }
-	  
-	  if (chdir(opath) < 0) {
-	    printf("sh: cd: %s: No such directory\n", opath);
-	    continue;
-	  }
-
-	  strcpy(path, getenv("PWD"));
-	  setenv("PWD", opath, 1);
-	  setenv("OLDPWD", path, 1);
-	} else {
-	  if (_build_path(path, c_args[1]) < 0) {
-	    printf("sh: cd: %s: Path too long\n", c_args[1]);
-	    continue;
-	  }
-	
-	  if (chdir(path) < 0) {
-	    printf("sh: cd: %s: No such directory\n", path);
-	    continue;
-	  }
-
-	  setenv("OLDPWD", getenv("PWD"), 1);
-	  setenv("PWD", path, 1);
-	}
-
-	continue;
-      }
-
-      else if (strcmp(c_args[0], "pwd") == 0) {
-	printf("%s\n", getenv("PWD"));  // TODO use $PWD
-	continue;
-      }
-	
-      // external commands
-      int fd = open(c_args[0], O_RDONLY);
-
-      if (fd < 0) {
-	printf("Command '%s' not found\n", c_args[0]);
-	continue;
-      }
-
-      // file exists, create new process
-      close(fd);
-      
-      int pid = fork();
-    
-      if (pid < 0) {
-	printf("cannot fork\n");
-      } else if (pid == 0) {
-	// child
-	execve(c_args[0], c_args, environ);
-
-	// only when exec fails
-	printf("cannot exec\n");
-	exit(0);
-      } else {
-	// parent
-	wait(NULL);
-
-	// TODO: process exit condition to look at
-	kill(pid, 1);
-      }
+      if (_do_words() < 0) {
+	break;
+      };
     }
   }
 

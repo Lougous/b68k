@@ -7,6 +7,7 @@
 
 #include <types.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <string.h>
 #include <syscall.h>
 
@@ -202,4 +203,46 @@ int mount(const char *source, const char *target,
   }
   
   return 0;
+}
+
+intptr_t __libc_brk;
+
+int brk(void *addr)
+{
+  // message to system task
+   message_t msg;
+
+  msg.type = BRK;
+  msg.body.u32 = (u32_t)addr;
+
+  u32_t rval;
+
+  SENDRECEIVE(msg, 0, rval);
+  
+  if (rval != 0) {
+    return -1;
+  }
+
+  if (msg.body.u32) {
+    errno = -msg.body.u32;
+    return -1;
+  }
+
+  __libc_brk = (intptr_t)addr;
+
+  return 0;
+}
+
+void *sbrk(intptr_t increment)
+{
+  intptr_t old_brk = __libc_brk;
+  
+  if (increment) {
+    if (brk((void *)(old_brk + increment))) {
+      // failed
+      return (void *) -1;
+    }
+  }
+
+  return (void *)old_brk;
 }

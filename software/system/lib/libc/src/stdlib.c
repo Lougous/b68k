@@ -95,6 +95,7 @@ int abs(int j)
 ////////////////////////////////////////////////////////////////////////////////
 // memory allocation
 ////////////////////////////////////////////////////////////////////////////////
+#define BRK_INCREMENT_MIN  4096
 
 typedef struct {
   int len;     // data chunk len (without header) + flags in LSB
@@ -112,8 +113,45 @@ extern char __e_heap;
 
 #define ALIGN32(u32) (((u32)+3) & ~3)
 
+# if 0    // debug tool
+
+// return the amount of free memory
+int __mem_free()
+{
+  mem_chunk_head_t *pch = _ck_list;
+  int free = 0;
+
+  while (pch) {
+    if (! (pch->len & _CK_ALLOCATED)) free += pch->len;
+    
+    pch = pch->next;
+  }
+
+  return free;
+}
+
+// display list of memory chunks
+void mem_stat()
+{
+  mem_chunk_head_t *pch = _ck_list;
+
+  while (pch) {
+    printf(" @%06Xh len=%u, %s\n", pch, pch->len & ~_CK_ALLOCATED, pch->len & _CK_ALLOCATED ? "allocated" : "free");
+
+    if (pch == pch->next) {
+      printf(" infinite loop !\n");
+      while(1);
+    }
+    
+    pch = pch->next;
+  }  
+}
+
+#endif
+
 void __mem_init()
 {
+  // only one chunk to start
   _ck_list = (mem_chunk_head_t *)&__s_heap;
   _ck_list->len = ((int)&__e_heap - (int)&__s_heap) - sizeof(mem_chunk_head_t);
   _ck_list->next = 0;
@@ -129,7 +167,7 @@ void __mem_add_chunk(void *chkp, int len)
     len--;
   }
 
-  // align (round down) length
+  // align (round down) length to 32-bits
   len = len & ~3;
   
   // smallest aligned chunk size is 4 bytes
@@ -142,47 +180,12 @@ void __mem_add_chunk(void *chkp, int len)
   }
 }
   
-int __mem_free()
+
+static mem_chunk_head_t *_find_chunk (size_t size)
 {
-  mem_chunk_head_t *pch = _ck_list;
-  int free = 0;
-
-  while (pch) {
-    if (! (pch->len & _CK_ALLOCATED)) free += pch->len;
-    
-    pch = pch->next;
-  }
-
-  return free;
-}
-
-# if 0
-// debug tool
-void mem_stat()
-{
-  mem_chunk_head_t *pch = _ck_list;
-
-  while (pch) {
-    printf(" @%06Xh len=%u, %s\n", pch, pch->len & ~_CK_ALLOCATED, pch->len & _CK_ALLOCATED ? "allocated" : "free");
-    
-    pch = pch->next;
-  }  
-}
-#endif
-
-void *malloc(size_t size)
-{
-  
-  if (! size) return 0;
-  
-  mem_chunk_head_t *pch = _ck_list;
-
-  // free chunk will need to be split in 2 chunks (1 allocated, 1 free)
-  size = ALIGN32(size);
-  size_t size_s = size + sizeof(mem_chunk_head_t);
-
+  mem_chunk_head_t *best_pch = 0;
   size_t best_diff = 0;
-  mem_chunk_head_t *best_pch  = 0;
+  mem_chunk_head_t *pch = _ck_list;
 
   // try to find the best match, ie the closest in size free chunk
   while (pch) {
@@ -194,20 +197,18 @@ void *malloc(size_t size)
       // free chunk
       if (len == size) {
 	// fit within exactly
-	best_pch  = pch;
-	best_diff = 0;
-	break;
-      } else if (len >= size_s) {
+	return pch;
+      } else if (len > size) {
 	if (best_pch) {
 	  // better ?
-	  if ((len - size_s) < best_diff) {
+	  if ((len - size) < best_diff) {
 	    best_pch  = pch;
-	    best_diff = len - size_s;
+	    best_diff = len - size;
 	  }
 	} else {
 	  // first match
 	  best_pch  = pch;
-	  best_diff = len - size_s;
+	  best_diff = len - size;
 	}
       }
     }
@@ -215,27 +216,61 @@ void *malloc(size_t size)
     // try next chunk
     pch = pch->next;
   }
-   
-  //printf(" >%Xh\n", (unsigned int)best_pch);
+
+  return best_pch;
+}
+
+void *malloc(size_t size)
+{
+  if (! size) return (void *) 0;
+  
+  size = ALIGN32(size);
+
+  mem_chunk_head_t *best_pch = _find_chunk(size);
+  size_t chunk_size = size + sizeof(mem_chunk_head_t);
+
+  if (best_pch == NULL) {
+    // need to expend process date section
+    size_t new_size = chunk_size > BRK_INCREMENT_MIN ? chunk_size : BRK_INCREMENT_MIN;
+    mem_chunk_head_t *new_ch = sbrk(new_size);
+
+    if (new_ch != (void *) -1) {
+      // success
+      new_ch->len  = new_size - sizeof(mem_chunk_head_t);
+      new_ch->next = NULL;
+
+      // add free chunk at the end of the list
+      mem_chunk_head_t *pch = _ck_list;
+
+      while (pch->next) {
+	pch = pch->next;
+      }
+
+      pch->next = new_ch;
+
+      // select new chunk
+      best_pch = new_ch;
+    }
+  }
 
   if (best_pch) {
     // candidate found
     mem_chunk_head_t *new_ch;
     
-    if (! best_diff) {
+    if (best_pch->len == size) {
       // perfect fit
       new_ch = best_pch;
 
       new_ch->len |= _CK_ALLOCATED;
     } else {
-      // split
+      // free chunk will need to be split in 2 chunks (1 allocated, 1 free)
       // allocated chunk get second part
-      new_ch = (void *)best_pch + (best_pch->len + sizeof(mem_chunk_head_t) - size_s);
+      new_ch = (void *)best_pch + (best_pch->len - size);
       new_ch->len  = size | _CK_ALLOCATED;
       new_ch->next = best_pch->next;
 
       // free chunk keep first part, shrunk
-      best_pch->len -= size_s;
+      best_pch->len -= chunk_size;
       best_pch->next = new_ch;
     }
 
@@ -244,7 +279,7 @@ void *malloc(size_t size)
 
   // allocation failed
   errno = ENOMEM;
-  return NULL;
+  return (void *) 0;
 }
 
 void free(void *ptr)
@@ -254,19 +289,20 @@ void free(void *ptr)
     mem_chunk_head_t *pch = _ck_list;
     mem_chunk_head_t *prev = 0;
 
+    // walk the chunk list to find the one to free
     while (pch) {
       if (pch == ptr_h) {
 	mem_chunk_head_t *pnext = pch->next;
 	
 	pch->len &= ~_CK_ALLOCATED;
 	
-	if (pnext && (!(pnext->len & _CK_ALLOCATED))) {
+	if (pnext && (!(pnext->len & _CK_ALLOCATED)) && ((intptr_t)pnext == (pch->len + sizeof(mem_chunk_head_t) + (intptr_t)pch))) {
 	  // next chunk not allocated, merge
 	  pch->len += pnext->len + sizeof(mem_chunk_head_t);
 	  pch->next = pnext->next;
 	}
 
-	if (prev && (!(prev->len & _CK_ALLOCATED))) {
+	if (prev && (!(prev->len & _CK_ALLOCATED)) && ((intptr_t)pch == (prev->len + sizeof(mem_chunk_head_t) + (intptr_t)prev))) {
 	  // previous chunk not allocated, merge
 	  prev->len += pch->len + sizeof(mem_chunk_head_t);
 	  prev->next = pch->next;

@@ -123,7 +123,7 @@ u32_t _k_exec_buf[(K_PROC_ARGS_SIZE+3) / 4];  // TODO: ARG_MAX in limits.h
 // root file system boot list (ordered)
 const char * const _root_boot_list[] = {
   // device, file system (0=auto, for disk partitions only)
-  //  "serial", "rfs",
+  "serial", "rfs",
   "sda0",   "fat",
   "sdb0",   "fat",
   0
@@ -594,6 +594,14 @@ void system_task (void)
       case WAIT:
 	K_PRINTF(3, "system: PID-%i: WAIT\n", from);
 	proc_wait(from);
+	break;
+
+      case BRK:
+	{
+	  K_PRINTF(3, "system: PID-%i: BRK %u\n", from, msg.body.u32);
+	  msg_out.body.u32 = proc_brk(from, msg.body.u32);
+	  send(from, &msg_out);
+	}
 	break;
 	
       default:

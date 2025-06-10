@@ -10,7 +10,7 @@
 
 /* kernel version */
 #define K_VERSION_MAJOR  0
-#define K_VERSION_MINOR  21
+#define K_VERSION_MINOR  22
 
 /* kernel debug / verbose level */
 #define K_DEBUG_LEVEL  0

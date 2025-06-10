@@ -22,4 +22,7 @@ int chdir(const char *path);
 
 extern char **environ;
 
+int brk(void *addr);
+void *sbrk(intptr_t increment);
+
 #endif /* _unistd_h_ */

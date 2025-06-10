@@ -5,6 +5,7 @@
 // System/libc - interns (globals, process init hook)
 //
 
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -24,7 +25,12 @@ extern void __mem_add_chunk(void *chkp, int len);
 
 char **environ;
 int errno;
+extern intptr_t __libc_brk;
 
+// end of heap section, usually defined by linker script
+extern intptr_t __e_heap; 
+
+// called by process startup code (usually crt0.s)
 void __libc_init (void)
 {
   // stdin
@@ -44,6 +50,7 @@ void __libc_init (void)
 
   // malloc
   __mem_init();
+  __libc_brk = __e_heap;
 
   // errno
   errno = 0;
@@ -55,6 +62,9 @@ void __libc_init (void)
   srand(12345678);
 }
 
+// optionally called by process startup code (usually crt0.s) whenever
+// environ is to be used
+//
 // memory at envp contains pointer table then data strings all together in a
 // envlen wide memory space. see EXEC in kernel/system.c
 void __libc_env_init (char *envp[], int envlen)

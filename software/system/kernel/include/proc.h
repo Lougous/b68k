@@ -30,7 +30,8 @@ extern void proc_exit(pid_t pid, s32_t eval);
 extern void proc_stat(pid_t pid);
 extern void proc_yield();
 extern u16_t proc_get_sig(pid_t pid);
-  
+extern int proc_brk(pid_t pid, u32_t sz);
+
 extern mem_pa_t va_to_pa(pid_t pid, mem_va_t dst, int len);
 extern mem_pa_t va_to_pa_str(pid_t pid, mem_va_t dst, u16_t maxlen);
 

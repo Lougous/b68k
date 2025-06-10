@@ -20,6 +20,7 @@
 #include "lock.h"
 #include "msg.h"
 #include "debug.h"
+#include "errno.h"
 
 #include "b68k.h"
 
@@ -692,6 +693,26 @@ void proc_wait(pid_t pid)
   k_unlock(lbkp);
 }
 
+int proc_brk(pid_t pid, u32_t sz)
+{
+  struct proc_desc_t *pp = &_proc_table[pid].d;
+
+  mem_pa_t new_ad = mem_realloc(pid, pp->mem_ad, pp->mem_sz, sz, 0);
+
+  if (new_ad == 0) {
+    return -ENOMEM;
+  }
+
+  // remap current process message
+  pp->pa_msg = (void *)pp->pa_msg - pp->mem_ad + new_ad;
+
+  // update process memory
+  pp->mem_ad = new_ad;
+  pp->mem_sz = ALIGN32(sz);
+
+  return 0;
+}
+
 pid_t proc_schedule (pid_t next)
 {
   struct proc_list_t *pp = NULL;
@@ -700,7 +721,7 @@ pid_t proc_schedule (pid_t next)
     /* use next ready process in the list */
     /* assumes always at least one ready process (idle process) */
     if (! _proc_ready) {
-      K_PRINTF(3, "proc_schedule: fatal error: READY process list empty !\n");
+      K_PRINTF(0, "proc_schedule: fatal error: READY process list empty !\n");
       k_panic();
     }
     

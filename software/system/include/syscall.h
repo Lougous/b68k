@@ -139,6 +139,7 @@ typedef struct {
 #define EXEC      0x0303
 #define WAIT      0x0304
 #define KILL      0x0305
+#define BRK       0x0306
 
 typedef struct {
   char **argv;  // NULL terminated list
@@ -153,6 +154,7 @@ typedef struct {
 // exit: uses s32 body
 // fork: uses no body (no argument)
 // wait: uses no body (no argument), yet (TODO)
+// brk: uses u32 body
 
 ////////////////////////////////////////////////////////////////////////////////
 // clock messages
